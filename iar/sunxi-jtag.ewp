@@ -3867,7 +3867,7 @@
             <group>
                 <name>gpio</name>
                 <file>
-                    <name>$PROJ_DIR$\..\u-boot\drivers\gpio\sunxi_gpio.c</name>
+                    <name>$PROJ_DIR$\..\src\sunxi_gpio.c</name>
                     <configuration>
                         <name>V3s-dram-init</name>
                         <settings>

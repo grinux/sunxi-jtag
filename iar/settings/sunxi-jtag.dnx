@@ -12,8 +12,8 @@
         <ByteLimit>50</ByteLimit>
     </Stack>
     <PlDriver>
-        <MemConfigValue />
         <FirstRun>0</FirstRun>
+        <MemConfigValue />
     </PlDriver>
     <ArmDriver>
         <EnableCache>0</EnableCache>
