@@ -1,0 +1,2394 @@
+/*
+  * Allwinner SUNXI CPU and DRAM initialization according to
+  * https://github.com/u-boot/u-boot/blob/d5d24e2e0a3f54175e458d89acd626da939e1130/arch/arm/mach-sunxi/clock_sun6i.c#L21
+  * Based on sunxi wiki suppose support via mandatory <sunxi> param:
+  *     SUN8I:
+  *       A-series: A23, A33, A40i, A50 
+  *       H-series: H2+, H3, H8, H80, H133 
+  *       R-series: R7, R11, R16, R40, R58, R311, R328 
+  *       T-series: T2, T3, T7, T8, T113-S3, T113-I 
+  *       V-series: V3, V3s, V5, V40, V66, V316, V536, V831, V833 
+  *       X-series: B288, B300, MR100, MR133, S3
+  *     SUNIV(clock setup only):
+  *       F-series: F23(F1C100A), F25, F1C100s, F1C200s, F1C500, F1C500s, F1C600, F1C800, F1D100  
+  *     SUN50I:
+  *       A-series: A64
+          H-series: H5
+  *     SUN6I(clock setup only):
+  *       A-series: A31, A31s
+  *
+  * SoC H3, H5, R40 should be specifed explicitly in <socid> param. All others are not mandatory
+  * Soc R40 may also have AHCI option in <socopts> to setup SATA clock
+  *
+  * v0.1: Tested on V3s CPU
+  */
+
+__param sunxi = "SUN8I";
+__param socid = "V3s";
+__param socopt = "";
+__param init_mode = "";
+__param cpu_voltage = 1140;
+__param cpu_clock = 1008000000;
+__param dram_clock = 360000000;
+__param dram_odt = 0;
+__param dram_bus_width = 16;
+__param dram_type = "DDR2";
+__param dram_zq = 14779;
+__param dram_base = 0x40000000;
+__param sram_base = 0x0;
+
+__param DEBUG_NONE_FLAG = (0);
+__param DEBUG_CALLS_FLAG = (1 << 0);
+__param DEBUG_IO_FLAG = (1 << 2);
+__param DEBUG_ALL_FLAG = (1 << 3);
+
+/* valid only if init_mode = "mac" */
+__param debug = DEBUG_NONE_FLAG;
+
+DEBUG_CALLS()
+{
+	return debug & DEBUG_CALLS_FLAG || debug & DEBUG_ALL_FLAG;
+}
+
+DEBUG_IO()
+{
+	return debug & DEBUG_IO_FLAG || debug & DEBUG_ALL_FLAG;
+}
+
+DEBUG_ALL()
+{
+	return debug & DEBUG_ALL_FLAG;
+}
+
+__param SUNXI_PRCM_BASE = 0x01f01400;
+__param prcm__pll_ctrl1 = (SUNXI_PRCM_BASE + 0x44);
+__param prcm__prcm_sec_switch = (SUNXI_PRCM_BASE + 0x1d0);
+__param PRCM_PLL_CTRL_LDO_KEY_MASK = (0xff << 24);
+__param PRCM_PLL_CTRL_LDO_KEY = (0xa7 << 24);
+__param PRCM_PLL_CTRL_LDO_DIGITAL_EN = (0x1 << 0);
+__param PRCM_PLL_CTRL_LDO_ANALOG_EN = (0x1 << 1);
+__param PRCM_PLL_CTRL_EXT_OSC_EN = (0x1 << 2);
+__param PRCM_PLL_CTRL_IN_PWR_HIGH = (0x1 << 15);
+__param PRCM_SEC_SWITCH_APB0_CLK_NONSEC = (0x1 << 0);
+__param PRCM_SEC_SWITCH_PLL_CFG_NONSEC = (0x1 << 1);
+__param PRCM_SEC_SWITCH_PWR_GATE_NONSEC = (0x1 << 2);
+
+PRCM_PLL_CTRL_LDO_OUT_H(cpu_voltage)
+{
+	return ((cpu_voltage - 1160) / 30 & 0x7) << 16;
+}
+
+PRCM_PLL_CTRL_LDO_OUT_L(cpu_voltage)
+{
+	return ((cpu_voltage - 1000) / 20 & 0x7) << 16;
+}
+
+__param SUNXI_CCM_BASE = 0x01c20000;
+__param ccm__pll1_cfg = (SUNXI_CCM_BASE + 0x00);
+__param ccm__pll5_cfg = (SUNXI_CCM_BASE + 0x20);
+__param ccm__pll6_cfg = (SUNXI_CCM_BASE + 0x28);
+__param ccm__sata_pll_cfg = (SUNXI_CCM_BASE + 0x34);
+__param ccm__pll11_cfg = (SUNXI_CCM_BASE + 0x4c);
+__param ccm__cpu_axi_cfg = (SUNXI_CCM_BASE + 0x50);
+__param ccm__ahb1_apb1_div = (SUNXI_CCM_BASE + 0x54);
+__param ccm__ahb_gate0 = (SUNXI_CCM_BASE + 0x60);
+__param ccm__sata_clk_cfg = (SUNXI_CCM_BASE + 0xc8);
+__param ccm__dram_clk_cfg = (SUNXI_CCM_BASE + 0xf4);
+__param ccm__mbus_reset = (SUNXI_CCM_BASE + 0xfc);
+__param ccm__mbus0_clk_cfg = (SUNXI_CCM_BASE + 0x15c);
+__param ccm__mbus1_clk_cfg = (SUNXI_CCM_BASE + 0x160);
+__param ccm__pll5_pattern_cfg = (SUNXI_CCM_BASE + 0x290);
+__param ccm__ahb_reset0_cfg = (SUNXI_CCM_BASE + 0x2c0);
+__param ccm__ccu_sec_switch = (SUNXI_CCM_BASE + 0x2f0);
+__param ccm__pll_lock_ctrl = (SUNXI_CCM_BASE + 0x320);
+__param PLL6_CFG_DEFAULT = 0x90041811;
+__param AHB1_ABP1_DIV_DEFAULT = 0x00003180;
+__param CCM_PLL5_PATTERN = 0xd1303333;
+__param CCM_PLL1_CTRL_LOCK = (1 << 28);
+__param CCM_PLL6_CTRL_LOCK = (1 << 28);
+__param AXI_DIV_3 = 2;
+__param ATB_DIV_2 = 1;
+__param AXI_DIV_SHIFT = 0;
+__param ATB_DIV_SHIFT = 8;
+__param CPU_CLK_SRC_OSC24M = 1;
+__param CPU_CLK_SRC_PLL1 = 2;
+__param CPU_CLK_SRC_SHIFT = 16;
+__param CCM_PLL1_CTRL_EN = (0x1 << 31);
+__param BITS_PER_LONG = 32;
+__param MBUS_CLK_DEFAULT_SUN50I = 0x81000002;
+__param MBUS_CLK_DEFAULT_SUN8I = 0x81000003;
+__param MBUS_CLK_DEFAULT = 0x81000001;
+__param CCM_SATA_PLL_DEFAULT = 0x90005811;
+__param AHB_GATE_OFFSET_SATA = 24;
+__param CCM_SATA_CTRL_ENABLE = (0x1 << 31);
+__param CCM_SEC_SWITCH_MBUS_NONSEC = (1 << 2);
+__param CCM_SEC_SWITCH_BUS_NONSEC = (1 << 1);
+__param CCM_SEC_SWITCH_PLL_NONSEC = (1 << 0);
+__param MBUS_CLK_GATE = (0x1 << 31);
+__param CCM_MBUS_RESET_RESET = (0x1 << 31);
+__param AHB_GATE_OFFSET_MCTL = 14;
+__param AHB_RESET_OFFSET_MCTL = 14;
+__param CCM_PLL5_CTRL_EN = (0x1 << 31);
+__param CCM_PLL5_CTRL_SIGMA_DELTA_EN = (0x1 << 24);
+__param CCM_PLL5_CTRL_UPD = (0x1 << 20);
+__param CCM_PLL11_CTRL_EN = (0x1 << 31);
+__param CCM_DRAMCLK_CFG_DIV_MASK = (0xf << 0);
+__param CCM_DRAMCLK_CFG_DIV0_MASK = (0xf << 8);
+__param CCM_DRAMCLK_CFG_SRC_PLL5 = (0x0 << 20);
+__param CCM_DRAMCLK_CFG_SRC_PLL6x2 = (0x1 << 20);
+__param CCM_DRAMCLK_CFG_SRC_PLL11 = (0x1 << 20); /* A64 only */
+__param CCM_DRAMCLK_CFG_SRC_MASK = (0x3 << 20);
+__param CCM_DRAMCLK_CFG_UPD = (0x1 << 16);
+__param CCM_DRAMCLK_CFG_RST = (0x1 << 31);
+CCM_DRAMCLK_CFG_DIV(x)
+{
+	return (x - 1) << 0;
+}
+CCM_DRAMCLK_CFG_DIV0(x)
+{
+	return (x - 1) << 8;
+}
+CCM_PLL5_CTRL_M(n)
+{
+	return (((n)-1) & 0x3) << 0;
+}
+CCM_PLL5_CTRL_K(n)
+{
+	return (((n)-1) & 0x3) << 4;
+}
+CCM_PLL5_CTRL_N(n)
+{
+	return (((n)-1) & 0x1f) << 8;
+}
+CCM_PLL1_CTRL_P(n)
+{
+	return (n & 0x3) << 16;
+}
+CCM_PLL1_CTRL_N(n)
+{
+	return ((n - 1) & 0x1f) << 8;
+}
+CCM_PLL1_CTRL_K(n)
+{
+	return ((n - 1) & 0x3) << 4;
+}
+CCM_PLL1_CTRL_M(n)
+{
+	return ((n - 1) & 0x3) << 0;
+}
+GENMASK(h, l)
+{
+	return ((~0UL) << (l)) & (~0UL >> (BITS_PER_LONG - 1 - (h)));
+}
+
+__param SUNXI_DRAM_CTL0_BASE = 0x01c63000;
+__param mctl_ctl__pir = (SUNXI_DRAM_CTL0_BASE + 0x00);
+__param mctl_ctl__pwrctl = (SUNXI_DRAM_CTL0_BASE + 0x04);
+__param mctl_ctl__mrctl = (SUNXI_DRAM_CTL0_BASE + 0x08);
+__param mctl_ctl__clken = (SUNXI_DRAM_CTL0_BASE + 0x0C);
+__param mctl_ctl__pgsr0 = (SUNXI_DRAM_CTL0_BASE + 0x10);
+__param mctl_ctl__pgsr1 = (SUNXI_DRAM_CTL0_BASE + 0x14);
+__param mctl_ctl__statr = (SUNXI_DRAM_CTL0_BASE + 0x18);
+__param mctl_ctl__res1 = (SUNXI_DRAM_CTL0_BASE + 0x1C);
+__param mctl_ctl__lp3mr11 = (SUNXI_DRAM_CTL0_BASE + 0x2C);
+__param mctl_ctl__mr0 = (SUNXI_DRAM_CTL0_BASE + 0x30);
+__param mctl_ctl__mr1 = (SUNXI_DRAM_CTL0_BASE + 0x34);
+__param mctl_ctl__mr2 = (SUNXI_DRAM_CTL0_BASE + 0x38);
+__param mctl_ctl__mr3 = (SUNXI_DRAM_CTL0_BASE + 0x3C);
+__param mctl_ctl__pllgcr = (SUNXI_DRAM_CTL0_BASE + 0x40);
+__param mctl_ctl__ptr0 = (SUNXI_DRAM_CTL0_BASE + 0x44);
+__param mctl_ctl__ptr1 = (mctl_ctl__ptr0 + 0x4);
+__param mctl_ctl__ptr2 = (mctl_ctl__ptr1 + 0x4);
+__param mctl_ctl__ptr3 = (mctl_ctl__ptr2 + 0x4);
+__param mctl_ctl__ptr4 = (mctl_ctl__ptr3 + 0x4);
+__param mctl_ctl__ptr5 = (mctl_ctl__ptr4 + 0x4);
+__param mctl_ctl__dramtmg0 = (SUNXI_DRAM_CTL0_BASE + 0x58);
+__param mctl_ctl__dramtmg1 = (mctl_ctl__dramtmg0 + 0x4);
+__param mctl_ctl__dramtmg2 = (mctl_ctl__dramtmg1 + 0x4);
+__param mctl_ctl__dramtmg3 = (mctl_ctl__dramtmg2 + 0x4);
+__param mctl_ctl__dramtmg4 = (mctl_ctl__dramtmg3 + 0x4);
+__param mctl_ctl__dramtmg5 = (mctl_ctl__dramtmg4 + 0x4);
+__param mctl_ctl__dramtmg6 = (mctl_ctl__dramtmg5 + 0x4);
+__param mctl_ctl__dramtmg7 = (mctl_ctl__dramtmg6 + 0x4);
+__param mctl_ctl__dramtmg8 = (mctl_ctl__dramtmg7 + 0x4);
+__param mctl_ctl__odtcfg = (SUNXI_DRAM_CTL0_BASE + 0x7C);
+__param mctl_ctl__pitmg0 = (SUNXI_DRAM_CTL0_BASE + 0x80);
+__param mctl_ctl__pitmg1 = (mctl_ctl__pitmg0 + 0x4);
+__param mctl_ctl__res2 = (SUNXI_DRAM_CTL0_BASE + 0x88);
+__param mctl_ctl__rfshctl0 = (SUNXI_DRAM_CTL0_BASE + 0x8c);
+__param mctl_ctl__rfshtmg = (SUNXI_DRAM_CTL0_BASE + 0x90);
+__param mctl_ctl__rfshctl1 = (SUNXI_DRAM_CTL0_BASE + 0x94);
+__param mctl_ctl__pwrtmg = (SUNXI_DRAM_CTL0_BASE + 0x98);
+__param mctl_ctl__res3 = (SUNXI_DRAM_CTL0_BASE + 0x9C);
+__param mctl_ctl__vtfcr = (SUNXI_DRAM_CTL0_BASE + 0xb8);
+__param mctl_ctl__dqsgmr = (SUNXI_DRAM_CTL0_BASE + 0xbc);
+__param mctl_ctl__dtcr = (SUNXI_DRAM_CTL0_BASE + 0xc0);
+__param mctl_ctl__dtar = (SUNXI_DRAM_CTL0_BASE + 0xc4);
+__param mctl_ctl__dtdr = (SUNXI_DRAM_CTL0_BASE + 0xd4);
+__param mctl_ctl__dtmr = (SUNXI_DRAM_CTL0_BASE + 0xdc);
+__param mctl_ctl__dtbmr = (SUNXI_DRAM_CTL0_BASE + 0xe4);
+__param mctl_ctl__catr = (SUNXI_DRAM_CTL0_BASE + 0xe8);
+__param mctl_ctl__dtedr = (SUNXI_DRAM_CTL0_BASE + 0xf0);
+__param mctl_ctl__res4 = (SUNXI_DRAM_CTL0_BASE + 0xf8);
+__param mctl_ctl__pgcr0 = (SUNXI_DRAM_CTL0_BASE + 0x100);
+__param mctl_ctl__pgcr1 = (mctl_ctl__pgcr0 + 0x4);
+__param mctl_ctl__pgcr2 = (mctl_ctl__pgcr1 + 0x4);
+__param mctl_ctl__pgcr3 = (mctl_ctl__pgcr2 + 0x4);
+__param mctl_ctl__iovcr = (SUNXI_DRAM_CTL0_BASE + 0x110);
+__param mctl_ctl__dqsdr = (SUNXI_DRAM_CTL0_BASE + 0x118);
+__param mctl_ctl__dxccr = (SUNXI_DRAM_CTL0_BASE + 0x11C);
+__param mctl_ctl__odtmap = (SUNXI_DRAM_CTL0_BASE + 0x120);
+__param mctl_ctl__zqctl = (SUNXI_DRAM_CTL0_BASE + 0x124);
+__param mctl_ctl__res6 = (SUNXI_DRAM_CTL0_BASE + 0x12c);
+__param mctl_ctl__zqcr = (SUNXI_DRAM_CTL0_BASE + 0x140);
+__param mctl_ctl__zqsr = (SUNXI_DRAM_CTL0_BASE + 0x144);
+__param mctl_ctl__zqdr0 = (SUNXI_DRAM_CTL0_BASE + 0x148);
+__param mctl_ctl__zqdr1 = (mctl_ctl__zqdr0 + 0x4);
+__param mctl_ctl__zqdr2 = (mctl_ctl__zqdr1 + 0x4);
+__param mctl_ctl__res7 = (SUNXI_DRAM_CTL0_BASE + 0x154);
+__param mctl_ctl__sched = (SUNXI_DRAM_CTL0_BASE + 0x1c0);
+__param mctl_ctl__perfhpr = (SUNXI_DRAM_CTL0_BASE + 0x1c4);
+__param mctl_ctl__perflpr = (SUNXI_DRAM_CTL0_BASE + 0x1cc);
+__param mctl_ctl__perfwr = (SUNXI_DRAM_CTL0_BASE + 0x1d4);
+__param mctl_ctl__res8 = (SUNXI_DRAM_CTL0_BASE + 0x1dc);
+__param mctl_ctl__acmdlr = (SUNXI_DRAM_CTL0_BASE + 0x200);
+__param mctl_ctl__aclcdlr = (SUNXI_DRAM_CTL0_BASE + 0x204);
+__param mctl_ctl__aciocr = (SUNXI_DRAM_CTL0_BASE + 0x208);
+__param mctl_ctl__res9 = (SUNXI_DRAM_CTL0_BASE + 0x20c);
+__param mctl_ctl__acbdlr = (SUNXI_DRAM_CTL0_BASE + 0x210);
+__param mctl_ctl__res10 = (SUNXI_DRAM_CTL0_BASE + 0x28c);
+__param mctl_ctl__dx = (SUNXI_DRAM_CTL0_BASE + 0x300);
+__param mctl_ctl__dx_mdlr = 0x00;
+__param mctl_ctl__dx_lcdlr = 0x04;
+__param mctl_ctl__dx_bdlr = 0x10;
+__param mctl_ctl__dx_sdlr = 0x3c;
+__param mctl_ctl__dx_gtr = 0x40;
+__param mctl_ctl__dx_gcr = 0x44;
+__param mctl_ctl__dx_gsr0 = 0x48;
+__param mctl_ctl__dx_gsr1 = (mctl_ctl__dx_gsr0 + 0x4);
+__param mctl_ctl__dx_gsr2 = (mctl_ctl__dx_gsr1 + 0x4);
+__param mctl_ctl__dx_gsr3 = (mctl_ctl__dx_gsr2 + 0x4);
+__param mctl_ctl__res11 = (SUNXI_DRAM_CTL0_BASE + 0x500);
+__param mctl_ctl__upd2 = (SUNXI_DRAM_CTL0_BASE + 0x888);
+__param PIR_CLRSR = (0x1 << 27);
+__param PIR_QSGATE = (0x1 << 10);
+__param PIR_DRAMINIT = (0x1 << 8);
+__param PIR_DRAMRST = (0x1 << 7);
+__param PIR_PHYRST = (0x1 << 6);
+__param PIR_DCAL = (0x1 << 5);
+__param PIR_PLLINIT = (0x1 << 4);
+__param PIR_ZCAL = (0x1 << 1);
+__param PIR_INIT = (0x1 << 0);
+__param PGSR_INIT_DONE = (0x1 << 0);
+__param ZQCR_PWRDOWN = (1U << 31);
+__param MCTL_CR_BL8 = (0x4 << 20);
+__param MCTL_CR_1T = (0x1 << 19);
+__param MCTL_CR_2T = (0x0 << 19);
+__param MCTL_CR_LPDDR3 = (0x7 << 16);
+__param MCTL_CR_LPDDR2 = (0x6 << 16);
+__param MCTL_CR_DDR3 = (0x3 << 16);
+__param MCTL_CR_DDR2 = (0x2 << 16);
+__param MCTL_CR_SEQUENTIAL = (0x1 << 15);
+__param MCTL_CR_INTERLEAVED = (0x0 << 15);
+__param MCTL_CR_FULL_WIDTH = (0x1 << 12);
+__param MCTL_CR_HALF_WIDTH = (0x0 << 12);
+__param MCTL_CR_EIGHT_BANKS = (0x1 << 2);
+__param MCTL_CR_FOUR_BANKS = (0x0 << 2);
+__param MCTL_CR_DUAL_RANK = (0x1 << 0);
+__param MCTL_CR_SINGLE_RANK = (0x0 << 0);
+__param PROTECT_MAGIC = 0x94be6fa3;
+__param DX_GCR_ODT_DYNAMIC = (0x0 << 4);
+__param DX_GCR_ODT_ALWAYS_ON = (0x1 << 4);
+__param DX_GCR_ODT_OFF = (0x2 << 4);
+
+MCTL_CR_BUS_FULL_WIDTH(x)
+{
+	return ((x) << 12);
+}
+
+MCTL_CR_PAGE_SIZE(x)
+{
+	return ((fls(x) - 4) << 8);
+}
+
+MCTL_CR_ROW_BITS(x)
+{
+	return (((x)-1) << 4);
+}
+
+__param SUNXI_DRAM_COM_BASE = 0x01c62000;
+__param mctl_com__cr = SUNXI_DRAM_COM_BASE + 0x00;
+__param mctl_com__cr_r1 = SUNXI_DRAM_COM_BASE + 0x04;
+__param mctl_com__res0 = SUNXI_DRAM_COM_BASE + 0x08;
+__param mctl_com__tmr = SUNXI_DRAM_COM_BASE + 0x0C;
+__param mctl_com__mcr = SUNXI_DRAM_COM_BASE + 0x10;
+__param mctl_com__bwcr = SUNXI_DRAM_COM_BASE + 0x90;
+__param mctl_com__maer = SUNXI_DRAM_COM_BASE + 0x94;
+__param mctl_com__mapr = SUNXI_DRAM_COM_BASE + 0x98;
+__param mctl_com__mcgcr = SUNXI_DRAM_COM_BASE + 0x9C;
+__param mctl_com__cpu_bwcr = SUNXI_DRAM_COM_BASE + 0xa0;
+__param mctl_com__gpu_bwcr = SUNXI_DRAM_COM_BASE + 0xa4;
+__param mctl_com__ve_bwcr = SUNXI_DRAM_COM_BASE + 0xA8;
+__param mctl_com__disp_bwcr = SUNXI_DRAM_COM_BASE + 0xAC;
+__param mctl_com__other_bwcr = SUNXI_DRAM_COM_BASE + 0xb0;
+__param mctl_com__total_bwcr = SUNXI_DRAM_COM_BASE + 0xb4;
+__param mctl_com__res1 = SUNXI_DRAM_COM_BASE + 0xb8;
+__param mctl_com__swonr = SUNXI_DRAM_COM_BASE + 0xc0;
+__param mctl_com__swoffr = SUNXI_DRAM_COM_BASE + 0xc4;
+__param mctl_com__res2 = SUNXI_DRAM_COM_BASE + 0xc8;
+__param mctl_com__cccr = SUNXI_DRAM_COM_BASE + 0xd0;
+__param mctl_com__res3 = SUNXI_DRAM_COM_BASE + 0xd4;
+__param mctl_com__mdfs_bwlr = SUNXI_DRAM_COM_BASE + 0x128;
+__param mctl_com__res4 = SUNXI_DRAM_COM_BASE + 0x6cc;
+__param mctl_com__protect = SUNXI_DRAM_COM_BASE + 0x800;
+
+__param dual_rank = 1;
+__param bus_full_width = 1;
+__param row_bits0 = 15;
+__param row_bits1 = 15;
+__param bank_bits0 = 3;
+__param bank_bits1 = 3;
+__param page_size0 = 4096;
+__param page_size1 = 4096;
+__param dx_read_delays = "";
+__param dx_write_delays = "";
+__param ac_delays = "";
+
+__param SUN8I_V3S_DX_READ_DELAYS =
+	"8,8,8,8,8,8,8,8,8,0,0;" + "7,7,7,7,7,7,7,7,7,0,0;" +
+	"0,0,0,0,0,0,0,0,0,0,0;" + "0,0,0,0,0,0,0,0,0,0,0";
+
+__param SUN8I_V3S_DX_WRITE_DELAYS =
+	"0,0,0,0,0,0,0,0,0,4,4;" + "0,0,0,0,0,0,0,0,0,2,2;" +
+	"0,0,0,0,0,0,0,0,0,0,0;" + "0,0,0,0,0,0,0,0,0,0,0";
+
+__param SUN8I_V3S_AC_DELAYS = "0,0,0,0,0,0,0,0," + "0,0,0,0,0,0,0,0," +
+			      "0,0,0,0,0,0,0,0," + "0,0,0,0,0,0,0";
+
+execUserPreload()
+{
+	__message "Going to configuire Allwinner ", sunxi, " ", socid;
+	if (init_mode == "") {
+		if (__messageBoxYesNo(
+                        "Press Yes to init DRAM using mac\n" +
+                        "Press No to init DRAM using binary\n\n" +
+                        "To supress this question set\n" +
+                        "--macro_param init_mode=<(\"mac\"|\"bin\")>\n" +
+                        "in \"Project->Options->Debugger->Extra Options\"\n\n" +
+                        "Binary mode needs to build desired dram-init " + 
+                        "configuration to generate *.hex file",
+			    ""))
+			init_mode = "mac";
+		else
+			init_mode = "bin";
+	}
+	if (init_mode == "bin") {
+		__var full_path, rc;
+		__message "Using binary";
+		full_path = "$WS_DIR$\\" + __toLower(sunxi) + "-" +
+			    __toLower(socid) + "-dram-init.hex";
+		__message "Trying to open " + full_path;
+		rc = __openFile(full_path, "r");
+		if (!rc) {
+			full_path = "$PROJ_DIR$\\" + __toLower(sunxi) + "-" +
+				    __toLower(socid) + "-dram-init.hex";
+			__message "Trying to open " + full_path;
+			rc = __openFile(full_path, "r");
+			if (!rc)
+				sunxi_panic("Binary " + __toLower(sunxi) + "-" +
+					    __toLower(socid) +
+					    "-dram-init.hex not found");
+		}
+		__closeFile(rc);
+		if (sunxi_is_soc_valid(socid)) {
+			if (__memoryRestore("Memory", full_path, 0))
+				sunxi_panic("Binary " + __toLower(sunxi) + "-" +
+					    __toLower(socid) +
+					    "-dram-init.hex loading error");
+		} else
+			sunxi_panic("Unsupported socid " + socid);
+		__message "Executing binary...";
+	/* if we zero-fill regs macro engine marks them as cached and after 
+         * executing blob it does not do rereading regs as J-link log says. 
+         * PC reading still 0 too! 
+         *  
+         * R10 = R11 = R12 = 0; so this is disabled
+         * 
+         */
+		CPSR = 0x1d3;
+		PC = 0;
+		rc = __hwRunToBreakpoint(0x40, 1000);
+		CPSR = 0x1d3;
+		if (rc == ~0 - 1 ||
+		    rc == ~0 - 2) /* rc:%d does not work for signed */
+			sunxi_panic(__smessage "Binary executing failed (",
+				    rc == ~0 - 1 ? "-1)" : "-2)");
+		cpu_clock = R12;
+		dram_clock = R11;
+		dram_size = R10;
+	} else if (init_mode == "mac") {
+		__message "Using macro";
+		__message "       CPU clock: ", cpu_clock / 1000000, ".",
+			cpu_clock % 1000000, " MHz";
+		__message "       Core voltage: ", cpu_voltage / 1000, ".",
+			cpu_voltage % 1000, " V";
+		__message "       DRAM clock: ", (dram_clock / 1000000), ".",
+			dram_clock % 1000000, " MHz";
+
+		clock_init_safe();
+		/* clock_init_uart(); */
+		clock_init_sec();
+		sunxi_dram_init();
+		clock_set_pll1(cpu_clock);
+		cpu_clock /= 1000000;
+		dram_clock /= 1000000;
+		dram_size >>= 20;
+	} else
+		sunxi_panic("Unsupported init_mode=" + init_mode + "\n\n" +
+			    "--macro_param init_mode=<(\"mac\"|\"bin\")>");
+
+	__message "Init done\n", "       CPU clock: ", cpu_clock, " MHz\n",
+		"       DRAM clock: ", dram_clock, " MHz\n",
+		"       DRAM size: ", dram_size, " MiB";
+}
+
+sunxi_is_soc_valid(socid)
+{
+	if (socid == "V3s" || socid == "H3" || socid == "H5" ||
+	    socid == "R40" || socid == "A63")
+		return 1;
+	return 0;
+}
+
+sunxi_panic(str)
+{
+	__messageBoxYesCancel("In sunxi.mac:\n\n" + str, "Error");
+	__abortLaunch("Error: " + __toLower(str) + "\n       Exiting....");
+}
+
+read(addr, name)
+{
+	__var val;
+	val = __readMemory32(addr, "Memory");
+	if (DEBUG_IO())
+		//__message "         R  ", name, ": 0x", val:%x;
+		__message "R32: ", addr : % x, "=", val : % x;
+	return val;
+}
+
+write(addr, val, name)
+{
+	if (DEBUG_IO())
+		//__message "         W ", name, ": 0x", val:%x;
+		__message "W32: ", addr : % x, "=", val : % x;
+	__writeMemory32(val, addr, "Memory");
+	return __readMemory32(addr, "Memory");
+}
+
+waitbits(addr, mask)
+{
+	__var val;
+	while (!((val = __readMemory32(addr, "Memory")) & mask))
+		;
+	return val;
+}
+
+waitval(addr, mask, val, to)
+{
+	__var tmo, rd;
+	tmo = __wallTime_ms() + to;
+	while (((rd = __readMemory32(addr, "Memory")) & mask) != val) {
+		if (__wallTime_ms() > tmo)
+			return rd;
+	}
+	return 0;
+}
+
+modify(addr, clear, set, name)
+{
+	__var val;
+	val = read(addr, name) & ~clear | set;
+	write(addr, val, name);
+	return val;
+}
+
+setbits(addr, set, name)
+{
+	return modify(addr, 0, set, name);
+}
+
+clrbits(addr, clear, name)
+{
+	return modify(addr, clear, 0, name);
+}
+
+mctl_sys_init_dw()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_sys_init_dw()";
+	clrbits(ccm__mbus0_clk_cfg, MBUS_CLK_GATE, "ccm->mbus0_clk_cfg");
+	clrbits(ccm__mbus_reset, CCM_MBUS_RESET_RESET, "ccm->mbus_reset");
+	clrbits(ccm__ahb_gate0, 1 << AHB_GATE_OFFSET_MCTL, "ccm->ahb_gate0");
+	clrbits(ccm__ahb_reset0_cfg, 1 << AHB_RESET_OFFSET_MCTL,
+		"ccm->ahb_reset0_cfg");
+	clrbits(ccm__pll5_cfg, CCM_PLL5_CTRL_EN, "ccm->pll5_cfg");
+	if (socid == "A64" || socid == "R40")
+		clrbits(ccm__pll11_cfg, CCM_PLL11_CTRL_EN, "ccm->pll11_cfg");
+	__delay(1);
+	clrbits(ccm__dram_clk_cfg, CCM_DRAMCLK_CFG_RST, "ccm->dram_clk_cfg");
+	__delay(1);
+	if (socid == "A64" || socid == "R40") {
+		clock_set_pll11(dram_clock * 2, 0);
+		modify(ccm__dram_clk_cfg,
+		       CCM_DRAMCLK_CFG_DIV_MASK | CCM_DRAMCLK_CFG_SRC_MASK,
+		       CCM_DRAMCLK_CFG_DIV(1) | CCM_DRAMCLK_CFG_SRC_PLL11 |
+			       CCM_DRAMCLK_CFG_UPD,
+		       "ccm->dram_clk_cfg");
+	} else if (socid == "H3" || socid == "H5" || socid == "V3s") {
+		clock_set_pll5(dram_clock * 2, 0);
+		modify(ccm__dram_clk_cfg,
+		       CCM_DRAMCLK_CFG_DIV_MASK | CCM_DRAMCLK_CFG_SRC_MASK,
+		       CCM_DRAMCLK_CFG_DIV(1) | CCM_DRAMCLK_CFG_SRC_PLL5 |
+			       CCM_DRAMCLK_CFG_UPD,
+		       "ccm->dram_clk_cfg");
+	}
+	if (waitval(ccm__dram_clk_cfg, CCM_DRAMCLK_CFG_UPD, 0, 1000))
+		sunxi_panic("Timeout initialising DRAM");
+	setbits(ccm__ahb_reset0_cfg, 1 << AHB_RESET_OFFSET_MCTL,
+		"ccm->ahb_reset0_cfg");
+	setbits(ccm__ahb_gate0, 1 << AHB_GATE_OFFSET_MCTL, "ccm->ahb_gate0");
+	setbits(ccm__mbus_reset, CCM_MBUS_RESET_RESET, "ccm->mbus_reset");
+	setbits(ccm__mbus0_clk_cfg, MBUS_CLK_GATE, "ccm->mbus0_clk_cfg");
+
+	setbits(ccm__dram_clk_cfg, CCM_DRAMCLK_CFG_RST, "ccm->dram_clk_cfg");
+	__delay(1);
+
+	write(mctl_ctl__clken, socid == "H5" ? 0x8000 : 0xc00e,
+	      "mctl_ctl->clken");
+	__delay(1);
+}
+
+mctl_set_timing_params_dw()
+{
+	if (dram_type == "DDR2")
+		/* dram_timings/ddr2_v3s.c */
+		mctl_set_timing_params_ddr2_v3s();
+	if (dram_type == "DDR3")
+		/* dram_timings/ddr3_1333.c */
+		mctl_set_timing_params_ddr3_1333();
+	if (dram_type == "LPDDR3")
+		/* dram_timings/lddr3_stock.c */
+		mctl_set_timing_params_ddr3_lpddr3_stock();
+}
+
+DIV_ROUND_UP(n, d)
+{
+	return (n + d - 1) / d;
+}
+
+ns_to_t(nanoseconds)
+{
+	__var ctrl_freq;
+	ctrl_freq = (dram_clock / 1000000) / 2;
+
+	return DIV_ROUND_UP(ctrl_freq * nanoseconds, 1000);
+}
+
+max(x, y)
+{
+	return x > y ? x : y;
+}
+
+min(x, y)
+{
+	return x < y ? x : y;
+}
+
+clamp(val, lo, hi)
+{
+	return min(max(val, lo), hi);
+}
+
+fls(x)
+{
+	__var r;
+	r = 32;
+
+	if (!x)
+		return 0;
+	if (!(x & 0xffff0000)) {
+		x <<= 16;
+		r -= 16;
+	}
+	if (!(x & 0xff000000)) {
+		x <<= 8;
+		r -= 8;
+	}
+	if (!(x & 0xf0000000)) {
+		x <<= 4;
+		r -= 4;
+	}
+	if (!(x & 0xc0000000)) {
+		x <<= 2;
+		r -= 2;
+	}
+	if (!(x & 0x80000000)) {
+		x <<= 1;
+		r -= 1;
+	}
+	return r;
+}
+
+PTR3_TDINIT1(x)
+{
+	return (x) << 20;
+}
+
+PTR3_TDINIT0(x)
+{
+	return (x) << 0;
+}
+
+PTR4_TDINIT3(x)
+{
+	return (x) << 20;
+}
+PTR4_TDINIT2(x)
+{
+	return (x) << 0;
+}
+
+DRAMTMG0_TWTP(x)
+{
+	return (x) << 24;
+}
+
+DRAMTMG0_TFAW(x)
+{
+	return (x) << 16;
+}
+
+DRAMTMG0_TRAS_MAX(x)
+{
+	return (x) << 8;
+}
+
+DRAMTMG0_TRAS(x)
+{
+	return (x) << 0;
+}
+
+DRAMTMG1_TXP(x)
+{
+	return (x) << 16;
+}
+
+DRAMTMG1_TRTP(x)
+{
+	return (x) << 8;
+}
+
+DRAMTMG1_TRC(x)
+{
+	return (x) << 0;
+}
+
+DRAMTMG2_TCWL(x)
+{
+	return (x) << 24;
+}
+
+DRAMTMG2_TCL(x)
+{
+	return (x) << 16;
+}
+
+DRAMTMG2_TRD2WR(x)
+{
+	return (x) << 8;
+}
+
+DRAMTMG2_TWR2RD(x)
+{
+	return (x) << 0;
+}
+
+DRAMTMG3_TMRW(x)
+{
+	return (x) << 16;
+}
+
+DRAMTMG3_TMRD(x)
+{
+	return (x) << 12;
+}
+
+DRAMTMG3_TMOD(x)
+{
+	return (x) << 0;
+}
+
+DRAMTMG4_TRCD(x)
+{
+	return (x) << 24;
+}
+
+DRAMTMG4_TCCD(x)
+{
+	return (x) << 16;
+}
+
+DRAMTMG4_TRRD(x)
+{
+	return (x) << 8;
+}
+
+DRAMTMG4_TRP(x)
+{
+	return (x) << 0;
+}
+
+DRAMTMG5_TCKSRX(x)
+{
+	return (x) << 24;
+}
+
+DRAMTMG5_TCKSRE(x)
+{
+	return (x) << 16;
+}
+
+DRAMTMG5_TCKESR(x)
+{
+	return (x) << 8;
+}
+
+DRAMTMG5_TCKE(x)
+{
+	return (x) << 0;
+}
+
+RFSHTMG_TREFI(x)
+{
+	return (x) << 16;
+}
+
+RFSHTMG_TRFC(x)
+{
+	return (x) << 0;
+}
+
+mctl_set_timing_params_ddr2_v3s()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_timing_params_ddr2_v3s()";
+
+	__var tccd, tfaw, trrd, trcd, trc, txp, twtr, trtp, twr, trp, tras,
+		trefi, trfc, tmrw, tmrd, tmod, tcke, tcksrx, tcksre, tckesr,
+		trasmax, tcl, tcwl, t_rdata_en, wr_latency, tdinit0, tdinit1,
+		tdinit2, tdinit3, twtp, twr2rd, trd2wr;
+
+	tccd = 1;
+	tfaw = ns_to_t(50);
+	trrd = max(ns_to_t(10), 2);
+	trcd = ns_to_t(20);
+	trc = ns_to_t(65);
+	txp = 2;
+	twtr = max(ns_to_t(8), 2);
+	trtp = max(ns_to_t(8), 2);
+	twr = max(ns_to_t(15), 3);
+	trp = ns_to_t(15);
+	tras = ns_to_t(45);
+	trefi = ns_to_t(7800) / 32;
+	trfc = ns_to_t(328);
+
+	tmrw = 0;
+	tmrd = 2;
+	tmod = 12;
+	tcke = 3;
+	tcksrx = 5;
+	tcksre = 5;
+	tckesr = 4;
+	trasmax = 27;
+
+	tcl = 3; /* CL 6 */
+	tcwl = 3; /* CWL 6 */
+	t_rdata_en = 1;
+	wr_latency = 1;
+
+	tdinit0 = (400 * ((dram_clock / 1000000))) + 1; /* 400us */
+	tdinit1 = (500 * ((dram_clock / 1000000))) / 1000 + 1; /* 500ns */
+	tdinit2 = (200 * ((dram_clock / 1000000))) + 1; /* 200us */
+	tdinit3 = (1 * ((dram_clock / 1000000))) + 1; /* 1us */
+
+	twtp = tcwl + 2 + twr; /* WL + BL / 2 + tWR */
+	twr2rd = tcwl + 2 + twtr; /* WL + BL / 2 + tWTR */
+	trd2wr = tcl + 2 + 1 - tcwl; /* RL + BL / 2 + 2 - WL */
+
+	/* set mode register */
+	write(mctl_ctl__mr0, 0x263, "mctl_ctl->mr[0]");
+	write(mctl_ctl__mr1, 0x4, "mctl_ctl->mr[1]");
+	write(mctl_ctl__mr2, 0x0, "mctl_ctl->mr[2]");
+	write(mctl_ctl__mr3, 0x0, "mctl_ctl->mr[3]");
+
+	/* set DRAM timing */
+	write(mctl_ctl__dramtmg0,
+	      DRAMTMG0_TWTP(twtp) | DRAMTMG0_TFAW(tfaw) |
+		      DRAMTMG0_TRAS_MAX(trasmax) | DRAMTMG0_TRAS(tras),
+	      "mctl_ctl->dramtmg[0]");
+	write(mctl_ctl__dramtmg1,
+	      DRAMTMG1_TXP(txp) | DRAMTMG1_TRTP(trtp) | DRAMTMG1_TRC(trc),
+	      "mctl_ctl->dramtmg[1]");
+	write(mctl_ctl__dramtmg2,
+	      DRAMTMG2_TCWL(tcwl) | DRAMTMG2_TCL(tcl) |
+		      DRAMTMG2_TRD2WR(trd2wr) | DRAMTMG2_TWR2RD(twr2rd),
+	      "mctl_ctl->dramtmg[2]");
+	write(mctl_ctl__dramtmg3,
+	      DRAMTMG3_TMRW(tmrw) | DRAMTMG3_TMRD(tmrd) | DRAMTMG3_TMOD(tmod),
+	      "mctl_ctl->dramtmg[3]");
+	write(mctl_ctl__dramtmg4,
+	      DRAMTMG4_TRCD(trcd) | DRAMTMG4_TCCD(tccd) | DRAMTMG4_TRRD(trrd) |
+		      DRAMTMG4_TRP(trp),
+	      "mctl_ctl->dramtmg[4]");
+	write(mctl_ctl__dramtmg5,
+	      DRAMTMG5_TCKSRX(tcksrx) | DRAMTMG5_TCKSRE(tcksre) |
+		      DRAMTMG5_TCKESR(tckesr) | DRAMTMG5_TCKE(tcke),
+	      "mctl_ctl->dramtmg[5]");
+
+	/* set two rank timing */
+	modify(mctl_ctl__dramtmg8, (0xff << 8) | (0xff << 0),
+	       (0x66 << 8) | (0x10 << 0), "mctl_ctl->dramtmg[8]");
+
+	/* set PHY interface timing, write latency and read latency configure */
+	write(mctl_ctl__pitmg0,
+	      (0x2 << 24) | (t_rdata_en << 16) | (0x1 << 8) | (wr_latency << 0),
+	      "mctl_ctl->pitmg[0]");
+
+	/* set PHY timing, PTR0-2 use default */
+	write(mctl_ctl__ptr3, PTR3_TDINIT0(tdinit0) | PTR3_TDINIT1(tdinit1),
+	      "mctl_ctl->ptr[3]");
+	write(mctl_ctl__ptr4, PTR4_TDINIT2(tdinit2) | PTR4_TDINIT3(tdinit3),
+	      "mctl_ctl->ptr[4]");
+
+	/* set refresh timing */
+	write(mctl_ctl__rfshtmg, RFSHTMG_TREFI(trefi) | RFSHTMG_TRFC(trfc),
+	      "mctl_ctl->rfshtmg");
+}
+
+mctl_set_timing_params_ddr3_1333()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_timing_params_ddr3_1333()";
+
+	__var tccd, tfaw, trrd, trcd, trc, txp, twtr, trtp, twr, trp, tras,
+		trefi, trfc, tmrw, tmrd, tmod, tcke, tcksrx, tcksre, tckesr,
+		trasmax, tcl, tcwl, t_rdata_en, wr_latency, tdinit0, tdinit1,
+		tdinit2, tdinit3, twtp, twr2rd, trd2wr;
+
+	tccd = 2;
+	tfaw = ns_to_t(50);
+	trrd = max(ns_to_t(10), 4);
+	trcd = ns_to_t(15);
+	trc = ns_to_t(53);
+	txp = max(ns_to_t(8), 3);
+	twtr = max(ns_to_t(8), 4);
+	trtp = max(ns_to_t(8), 4);
+	twr = max(ns_to_t(15), 3);
+	trp = ns_to_t(15);
+	tras = ns_to_t(38);
+	trefi = ns_to_t(7800) / 32;
+	trfc = ns_to_t(350);
+
+	tmrw = 0;
+	tmrd = 4;
+	tmod = 12;
+	tcke = 3;
+	tcksrx = 5;
+	tcksre = 5;
+	tckesr = 4;
+	trasmax = 24;
+
+	tcl = 6; /* CL 12 */
+	tcwl = 4; /* CWL 8 */
+	t_rdata_en = 4;
+	wr_latency = 2;
+
+	tdinit0 = (500 * (dram_clock / 1000000)) + 1; /* 500us */
+	tdinit1 = (360 * (dram_clock / 1000000)) / 1000 + 1; /* 360ns */
+	tdinit2 = (200 * (dram_clock / 1000000)) + 1; /* 200us */
+	tdinit3 = (1 * (dram_clock / 1000000)) + 1; /* 1us */
+
+	twtp = tcwl + 2 + twr; /* WL + BL / 2 + tWR */
+	twr2rd = tcwl + 2 + twtr; /* WL + BL / 2 + tWTR */
+	trd2wr = tcl + 2 + 1 - tcwl; /* RL + BL / 2 + 2 - WL */
+
+	/* set mode register */
+	write(mctl_ctl__mr0, 0x1c70, "mctl_ctl->mr[0]"); /* CL=11, WR=12 */
+	write(mctl_ctl__mr1, 0x40, "mctl_ctl->mr[1]");
+	write(mctl_ctl__mr2, 0x18, "mctl_ctl->mr[2]"); /* CWL=8 */
+	write(mctl_ctl__mr3, 0x0, "mctl_ctl->mr[3]");
+
+	if (socid == "R40")
+		write(mctl_ctl__lp3mr11, 0x3,
+		      "mctl_ctl->lp3mr11"); /* odt_en[7:4] */
+
+	/* set DRAM timing */
+	write(mctl_ctl__dramtmg0,
+	      DRAMTMG0_TWTP(twtp) | DRAMTMG0_TFAW(tfaw) |
+		      DRAMTMG0_TRAS_MAX(trasmax) | DRAMTMG0_TRAS(tras),
+	      "mctl_ctl->dramtmg[0]");
+	write(mctl_ctl__dramtmg1,
+	      DRAMTMG1_TXP(txp) | DRAMTMG1_TRTP(trtp) | DRAMTMG1_TRC(trc),
+	      "mctl_ctl->dramtmg[1]");
+	write(mctl_ctl__dramtmg2,
+	      DRAMTMG2_TCWL(tcwl) | DRAMTMG2_TCL(tcl) |
+		      DRAMTMG2_TRD2WR(trd2wr) | DRAMTMG2_TWR2RD(twr2rd),
+	      "mctl_ctl->dramtmg[2]");
+	write(mctl_ctl__dramtmg3,
+	      DRAMTMG3_TMRW(tmrw) | DRAMTMG3_TMRD(tmrd) | DRAMTMG3_TMOD(tmod),
+	      "mctl_ctl->dramtmg[3]");
+	write(mctl_ctl__dramtmg4,
+	      DRAMTMG4_TRCD(trcd) | DRAMTMG4_TCCD(tccd) | DRAMTMG4_TRRD(trrd) |
+		      DRAMTMG4_TRP(trp),
+	      "mctl_ctl->dramtmg[4]");
+	write(mctl_ctl__dramtmg5,
+	      DRAMTMG5_TCKSRX(tcksrx) | DRAMTMG5_TCKSRE(tcksre) |
+		      DRAMTMG5_TCKESR(tckesr) | DRAMTMG5_TCKE(tcke),
+	      "mctl_ctl->dramtmg[5]");
+
+	/* set two rank timing */
+	modify(mctl_ctl__dramtmg8, (0xff << 8) | (0xff << 0),
+	       ((socid == "H5" ? 0x33 : 0x66) << 8) | (0x10 << 0),
+	       "mctl_ctl->dramtmg[8]");
+
+	/* set PHY interface timing, write latency and read latency configure */
+	write(mctl_ctl__pitmg0,
+	      (0x2 << 24) | (t_rdata_en << 16) | (0x1 << 8) | (wr_latency << 0),
+	      "mctl_ctl->pitmg[0]");
+
+	/* set PHY timing, PTR0-2 use default */
+	write(mctl_ctl__ptr3, PTR3_TDINIT0(tdinit0) | PTR3_TDINIT1(tdinit1),
+	      "mctl_ctl->ptr[3]");
+	write(mctl_ctl__ptr4, PTR4_TDINIT2(tdinit2) | PTR4_TDINIT3(tdinit3),
+	      "mctl_ctl->ptr[4]");
+
+	/* set refresh timing */
+	write(mctl_ctl__rfshtmg, RFSHTMG_TREFI(trefi) | RFSHTMG_TRFC(trfc),
+	      "mctl_ctl->rfshtmg");
+}
+
+mctl_set_timing_params_ddr3_lpddr3_stock()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_timing_params_ddr3_lpddr3_stock()";
+
+	__var tccd, tfaw, trrd, trcd, trc, txp, twtr, trtp, twr, trp, tras,
+		trefi, trfc, tmrw, tmrd, tmod, tcke, tcksrx, tcksre, tckesr,
+		trasmax, tcl, tcwl, t_rdata_en, wr_latency, tdinit0, tdinit1,
+		tdinit2, tdinit3, twtp, twr2rd, trd2wr;
+
+	tccd = 2;
+	tfaw = max(ns_to_t(50), 4);
+	trrd = max(ns_to_t(10), 2);
+	trcd = max(ns_to_t(24), 2);
+	trc = ns_to_t(70);
+	txp = max(ns_to_t(8), 2);
+	twtr = max(ns_to_t(8), 2);
+	trtp = max(ns_to_t(8), 2);
+	twr = max(ns_to_t(15), 3);
+	trp = max(ns_to_t(27), 2);
+	tras = ns_to_t(42);
+	trefi = ns_to_t(3900) / 32;
+	trfc = ns_to_t(210);
+
+	tmrw = 5;
+	tmrd = 5;
+	tmod = 12;
+	tcke = 3;
+	tcksrx = 5;
+	tcksre = 5;
+	tckesr = 5;
+	trasmax = 24;
+
+	tcl = 6; /* CL 12 */
+	tcwl = 3; /* CWL 6 */
+	t_rdata_en = 5;
+	wr_latency = 2;
+
+	tdinit0 = (200 * (dram_clock / 1000000)) + 1; /* 200us */
+	tdinit1 = (100 * (dram_clock / 1000000)) / 1000 + 1; /* 100ns */
+	tdinit2 = (11 * (dram_clock / 1000000)) + 1; /* 11us */
+	tdinit3 = (1 * (dram_clock / 1000000)) + 1; /* 1us */
+
+	twtp = tcwl + 4 + twr + 1;
+	twr2rd = tcwl + 4 + 1 + twtr;
+	trd2wr = tcl + 4 + 5 - tcwl + 1;
+
+	/* set mode register */
+	write(mctl_ctl__mr1, 0xc3, "mctl_ctl->mr[1]"); /* nWR=8, BL8 */
+	write(mctl_ctl__mr2, 0xa, "mctl_ctl->mr[2]"); /* RL=12, WL=6 */
+	write(mctl_ctl__mr3, 0x2, "mctl_ctl->mr[3]"); /* 40 0hms PD/PU */
+
+	/* set DRAM timing */
+	write(mctl_ctl__dramtmg0,
+	      DRAMTMG0_TWTP(twtp) | DRAMTMG0_TFAW(tfaw) |
+		      DRAMTMG0_TRAS_MAX(trasmax) | DRAMTMG0_TRAS(tras),
+	      "mctl_ctl->dramtmg[0]");
+	write(mctl_ctl__dramtmg1,
+	      DRAMTMG1_TXP(txp) | DRAMTMG1_TRTP(trtp) | DRAMTMG1_TRC(trc),
+	      "mctl_ctl->dramtmg[1]");
+	write(mctl_ctl__dramtmg2,
+	      DRAMTMG2_TCWL(tcwl) | DRAMTMG2_TCL(tcl) |
+		      DRAMTMG2_TRD2WR(trd2wr) | DRAMTMG2_TWR2RD(twr2rd),
+	      "mctl_ctl->dramtmg[2]");
+	write(mctl_ctl__dramtmg3,
+	      DRAMTMG3_TMRW(tmrw) | DRAMTMG3_TMRD(tmrd) | DRAMTMG3_TMOD(tmod),
+	      "mctl_ctl->dramtmg[3]");
+	write(mctl_ctl__dramtmg4,
+	      DRAMTMG4_TRCD(trcd) | DRAMTMG4_TCCD(tccd) | DRAMTMG4_TRRD(trrd) |
+		      DRAMTMG4_TRP(trp),
+	      "mctl_ctl->dramtmg[4]");
+	write(mctl_ctl__dramtmg5,
+	      DRAMTMG5_TCKSRX(tcksrx) | DRAMTMG5_TCKSRE(tcksre) |
+		      DRAMTMG5_TCKESR(tckesr) | DRAMTMG5_TCKE(tcke),
+	      "mctl_ctl->dramtmg[5]");
+
+	/* set two rank timing */
+	modify2(mctl_ctl__dramtmg8, (0xff << 8) | (0xff << 0),
+		(0x66 << 8) | (0x10 << 0), "mctl_ctl-dramtmg[8]");
+
+	/* set PHY interface timing, write latency and read latency configure */
+	write(mctl_ctl__pitmg0,
+	      (0x2 << 24) | (t_rdata_en << 16) | (0x1 << 8) | (wr_latency << 0),
+	      "mctl_ctl->pitmg[0]");
+
+	/* set PHY timing, PTR0-2 use default */
+	write(mctl_ctl__ptr3, PTR3_TDINIT0(tdinit0) | PTR3_TDINIT1(tdinit1),
+	      "mctl_ctl->ptr[3]");
+	write(mctl_ctl__ptr4, PTR4_TDINIT2(tdinit2) | PTR4_TDINIT3(tdinit3),
+	      "mctl_ctl->ptr[4]");
+
+	/* set refresh timing */
+	write(mctl_ctl__rfshtmg, RFSHTMG_TREFI(trefi) | RFSHTMG_TRFC(trfc),
+	      "mctl_ctl->rfshtmg");
+}
+
+mbus_configure_port(port, bwlimit, priority,
+		    qos, /* MBUS_QOS_LOWEST .. MBUS_QOS_HIGEST */
+		    waittime, /* 0 .. 0xf */
+		    acs, /* 0 .. 0xff */
+		    bwl0, /* 0 .. 0xffff, bandwidth limit in MB/s */
+		    bwl1, bwl2)
+{
+	if (DEBUG_CALLS())
+		__message "mbus_configure_port(", port, ")";
+
+	__var cfg0, cfg1;
+	cfg0 = ((bwlimit ? (1 << 0) : 0) | (priority ? (1 << 1) : 0) |
+		((qos & 0x3) << 2) | ((waittime & 0xf) << 4) |
+		((acs & 0xff) << 8) | (bwl0 << 16));
+	cfg1 = (bwl2 << 16) | (bwl1 & 0xffff);
+
+	if (DEBUG_ALL())
+		__message "MBUS port ", port : % d, " cfg0 ", cfg0 : % x,
+			" cfg1 ", cfg1 : % x;
+
+	write(mctl_com__mcr + (mctl_com__bwcr - mctl_com__mcr) / 16 * port,
+	      cfg0, __smessage "mctl_com->mcr[", port, "][0]");
+	write(mctl_com__mcr + (mctl_com__bwcr - mctl_com__mcr) / 16 * port +
+		      0x4,
+	      cfg1, __smessage "mctl_com->mcr[", port, "][1]");
+}
+
+MBUS_CONF(port, bwlimit, qos, acs, bwl0, bwl1, bwl2)
+{
+	mbus_configure_port(port, bwlimit, 0, qos, 0, acs, bwl0, bwl1, bwl2);
+}
+
+__param MBUS_PORT_CPU = 0;
+__param MBUS_PORT_GPU = 1;
+__param MBUS_PORT_UNUSED = 2;
+__param MBUS_PORT_DMA = 3;
+__param MBUS_PORT_VE = 4;
+__param MBUS_PORT_CSI = 5;
+__param MBUS_PORT_NAND = 6;
+__param MBUS_PORT_SS = 7;
+__param MBUS_PORT_DE_V3S = 8;
+__param MBUS_PORT_DE_CFD_V3S = 9;
+__param MBUS_PORT_TS = 8;
+__param MBUS_PORT_DI = 9;
+__param MBUS_PORT_DE = 10;
+__param MBUS_PORT_DE_CFD = 11;
+__param MBUS_PORT_UNKNOWN1 = 12;
+__param MBUS_PORT_UNKNOWN2 = 13;
+__param MBUS_PORT_UNKNOWN3 = 14;
+
+__param MBUS_QOS_LOWEST = 0;
+__param MBUS_QOS_LOW = 1;
+__param MBUS_QOS_HIGH = 2;
+__param MBUS_QOS_HIGHEST = 3;
+
+REPEAT_BYTE(x)
+{
+	return (~0 / 0xff) * x;
+}
+
+mctl_set_master_priority_h3()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_master_priority_h3()";
+
+	/* enable bandwidth limit windows and set windows size 1us */
+	write(mctl_com__bwcr, (1 << 16) | (400 << 0), "mctl_com->bwcr");
+
+	/* set cpu high priority */
+	write(mctl_com__mapr, 0x00000001, "mctl_com->mapr");
+
+	MBUS_CONF(MBUS_PORT_CPU, 1, MBUS_QOS_HIGHEST, 0, 512, 256, 128);
+	MBUS_CONF(MBUS_PORT_GPU, 1, MBUS_QOS_HIGH, 0, 1536, 1024, 256);
+	MBUS_CONF(MBUS_PORT_UNUSED, 1, MBUS_QOS_HIGHEST, 0, 512, 256, 96);
+	MBUS_CONF(MBUS_PORT_DMA, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 32);
+	MBUS_CONF(MBUS_PORT_VE, 1, MBUS_QOS_HIGH, 0, 1792, 1600, 256);
+	MBUS_CONF(MBUS_PORT_CSI, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 32);
+	MBUS_CONF(MBUS_PORT_NAND, 1, MBUS_QOS_HIGH, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_SS, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_TS, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_DI, 1, MBUS_QOS_HIGH, 0, 1024, 256, 64);
+	MBUS_CONF(MBUS_PORT_DE, 1, MBUS_QOS_HIGHEST, 3, 8192, 6120, 1024);
+	MBUS_CONF(MBUS_PORT_DE_CFD, 1, MBUS_QOS_HIGH, 0, 1024, 288, 64);
+}
+
+mctl_set_master_priority_v3s()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_master_priority_v3s()";
+
+	/* enable bandwidth limit windows and set windows size 1us */
+	write(mctl_com__bwcr, (1 << 16) | (400 << 0), "mctl_com->bwcr");
+
+	/* set cpu high priority */
+	write(mctl_com__mapr, 0x00000001, "mctl_com->mapr");
+
+	MBUS_CONF(MBUS_PORT_CPU, 1, MBUS_QOS_HIGHEST, 0, 160, 100, 80);
+	MBUS_CONF(MBUS_PORT_GPU, 1, MBUS_QOS_HIGH, 0, 1792, 1536, 0);
+	MBUS_CONF(MBUS_PORT_UNUSED, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 80);
+	MBUS_CONF(MBUS_PORT_DMA, 1, MBUS_QOS_HIGH, 0, 256, 100, 0);
+	MBUS_CONF(MBUS_PORT_VE, 1, MBUS_QOS_HIGH, 0, 2048, 1600, 0);
+	MBUS_CONF(MBUS_PORT_CSI, 1, MBUS_QOS_HIGHEST, 0, 384, 256, 0);
+	MBUS_CONF(MBUS_PORT_NAND, 1, MBUS_QOS_HIGH, 0, 100, 50, 0);
+	MBUS_CONF(MBUS_PORT_SS, 1, MBUS_QOS_HIGH, 0, 384, 256, 0);
+	MBUS_CONF(MBUS_PORT_DE_V3S, 0, MBUS_QOS_HIGH, 0, 8192, 4096, 0);
+	MBUS_CONF(MBUS_PORT_DE_CFD_V3S, 1, MBUS_QOS_HIGH, 0, 640, 256, 0);
+}
+
+mctl_set_master_priority_a64()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_master_priority_a64()";
+
+	/* enable bandwidth limit windows and set windows size 1us */
+	write(mctl_com__tmr, 399, "mctl_com->tmr");
+	write(mctl_com__bwcr, (1 << 16), "mctl_com->bwcr");
+
+	/* Port 2 is reserved per Allwinner's linux-3.10 source, yet they
+         * initialise it */
+	MBUS_CONF(MBUS_PORT_CPU, 1, MBUS_QOS_HIGHEST, 0, 160, 100, 80);
+	MBUS_CONF(MBUS_PORT_GPU, 0, MBUS_QOS_HIGH, 0, 1536, 1400, 256);
+	MBUS_CONF(MBUS_PORT_UNUSED, 1, MBUS_QOS_HIGHEST, 0, 512, 256, 96);
+	MBUS_CONF(MBUS_PORT_DMA, 1, MBUS_QOS_HIGH, 0, 256, 80, 100);
+	MBUS_CONF(MBUS_PORT_VE, 1, MBUS_QOS_HIGH, 0, 1792, 1600, 256);
+	MBUS_CONF(MBUS_PORT_CSI, 1, MBUS_QOS_HIGH, 0, 256, 128, 0);
+	MBUS_CONF(MBUS_PORT_NAND, 1, MBUS_QOS_HIGH, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_SS, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_TS, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_DI, 1, MBUS_QOS_HIGH, 0, 1024, 256, 64);
+	MBUS_CONF(MBUS_PORT_DE, 1, MBUS_QOS_HIGH, 2, 8192, 6144, 2048);
+	MBUS_CONF(MBUS_PORT_DE_CFD, 1, MBUS_QOS_HIGH, 0, 1280, 144, 64);
+
+	write(mctl_com__mdfs_bwlr2, 0x81000004, "mctl_com->mdfs_bwlr[2]");
+}
+
+mctl_set_master_priority_h5()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_master_priority_h5()";
+
+	/* enable bandwidth limit windows and set windows size 1us */
+	write(mctl_com__tmr, 399, "mctl_com->tmr");
+	write(mctl_com__bwcr, (1 << 16), "mctl_com->bwcr");
+
+	/* set cpu high priority */
+	write(mctl_com__mapr, 0x00000001, "mctl_com->mapr");
+
+	/* Port 2 is reserved per Allwinner's linux-3.10 source, yet
+         * they initialise it */
+	MBUS_CONF(MBUS_PORT_CPU, 1, MBUS_QOS_HIGHEST, 0, 300, 260, 150);
+	MBUS_CONF(MBUS_PORT_GPU, 1, MBUS_QOS_HIGHEST, 0, 600, 400, 200);
+	MBUS_CONF(MBUS_PORT_UNUSED, 1, MBUS_QOS_HIGHEST, 0, 512, 256, 96);
+	MBUS_CONF(MBUS_PORT_DMA, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 32);
+	MBUS_CONF(MBUS_PORT_VE, 1, MBUS_QOS_HIGHEST, 0, 1900, 1500, 1000);
+	MBUS_CONF(MBUS_PORT_CSI, 1, MBUS_QOS_HIGHEST, 0, 150, 120, 100);
+	MBUS_CONF(MBUS_PORT_NAND, 1, MBUS_QOS_HIGH, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_SS, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_TS, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_DI, 1, MBUS_QOS_HIGH, 0, 1024, 256, 64);
+	MBUS_CONF(MBUS_PORT_DE, 1, MBUS_QOS_HIGHEST, 3, 3400, 2400, 1024);
+	MBUS_CONF(MBUS_PORT_DE_CFD, 1, MBUS_QOS_HIGHEST, 0, 600, 400, 200);
+}
+
+mctl_set_master_priority_r40()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_master_priority_r40()";
+
+	/* enable bandwidth limit windows and set windows size 1us */
+	write(mctl_com__tmr, 399, "mctl_com->tmr");
+	write(mctl_com__bwcr, (1 << 16), "mctl_com->bwcr");
+
+	/* set cpu high priority */
+	write(mctl_com__mapr, 0x00000001, "mctl_com->mapr");
+
+	/* Port 2 is reserved per Allwinner's linux-3.10 source, yet
+         * they initialise it */
+	MBUS_CONF(MBUS_PORT_CPU, 1, MBUS_QOS_HIGHEST, 0, 300, 260, 150);
+	MBUS_CONF(MBUS_PORT_GPU, 1, MBUS_QOS_HIGHEST, 0, 600, 400, 200);
+	MBUS_CONF(MBUS_PORT_UNUSED, 1, MBUS_QOS_HIGHEST, 0, 512, 256, 96);
+	MBUS_CONF(MBUS_PORT_DMA, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 32);
+	MBUS_CONF(MBUS_PORT_VE, 1, MBUS_QOS_HIGHEST, 0, 1900, 1500, 1000);
+	MBUS_CONF(MBUS_PORT_CSI, 1, MBUS_QOS_HIGHEST, 0, 150, 120, 100);
+	MBUS_CONF(MBUS_PORT_NAND, 1, MBUS_QOS_HIGH, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_SS, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_TS, 1, MBUS_QOS_HIGHEST, 0, 256, 128, 64);
+	MBUS_CONF(MBUS_PORT_DI, 1, MBUS_QOS_HIGH, 0, 1024, 256, 64);
+
+	/*
+        * The port names are probably wrong, but no correct sources
+        * are available.
+        */
+	MBUS_CONF(MBUS_PORT_DE, 1, MBUS_QOS_HIGH, 0, 128, 48, 0);
+	MBUS_CONF(MBUS_PORT_DE_CFD, 1, MBUS_QOS_HIGH, 0, 384, 256, 0);
+	MBUS_CONF(MBUS_PORT_UNKNOWN1, 1, MBUS_QOS_HIGHEST, 0, 512, 384, 256);
+	MBUS_CONF(MBUS_PORT_UNKNOWN2, 1, MBUS_QOS_HIGHEST, 2, 8192, 6144, 1024);
+	MBUS_CONF(MBUS_PORT_UNKNOWN3, 1, MBUS_QOS_HIGH, 0, 1280, 144, 64);
+}
+
+mctl_set_master_priority_dw()
+{
+	if (socid == "H3")
+		mctl_set_master_priority_h3();
+	if (socid == "V3s")
+		mctl_set_master_priority_v3s();
+	if (socid == "A64")
+		mctl_set_master_priority_a64();
+	if (socid == "H5")
+		mctl_set_master_priority_h5();
+	if (socid == "R40")
+		mctl_set_master_priority_r40();
+}
+
+__param BITS_PER_BYTE = 8;
+__param NR_OF_BYTE_LANES = 32 / BITS_PER_BYTE;
+__param LINES_PER_BYTE_LANE = BITS_PER_BYTE + 3;
+
+DXBDLR_WRITE_DELAY(x)
+{
+	return (x) << 8;
+}
+DXBDLR_READ_DELAY(x)
+{
+	return (x) << 0;
+}
+
+ACBDLR_WRITE_DELAY(x)
+{
+	return (x) << 8;
+}
+
+__isdigit(chr)
+{
+	if (chr >= '0' && chr <= '9')
+		return 1;
+	return 0;
+}
+
+__isxdigit(chr)
+{
+	if ((chr >= 'a' && chr <= 'f') || (chr >= 'A' && chr <= 'F') ||
+	    __isdigit(chr))
+		return 1;
+	return 0;
+}
+
+__char2hex(chr)
+{
+	if (chr >= '0' && chr <= '9')
+		return chr - '0';
+	else if (chr >= 'a' && chr <= 'f')
+		return chr - 'a' + 10;
+	else if (chr >= 'A' && chr <= 'F')
+		return chr - 'A' + 10;
+	else
+		return 0;
+}
+
+__strtoul(str, size, base)
+{
+	__var i, val;
+
+	val = 0;
+
+	for (i = 0; i < size; i++) {
+		if (base == 10) {
+			if (__isdigit(str[i]))
+				val = val * 10 + (str[i] - '0');
+			else
+				return -1;
+		} else if (base == 16) {
+			if (__isxdigit(str[i]))
+				val |= __char2hex(str[i]) << 4 * (size - i - 1);
+			else
+				return -1;
+		} else
+			return -2;
+	}
+	return val;
+}
+
+get_str_array_val(array, base, col_idx, val_idx)
+{
+	if (DEBUG_ALL())
+		__message "get_str_array_val()";
+  /* extract array value from formatted 1D/2D string array 
+   *
+   * 2D array format:
+   * "0,1,2,3,4,5,6,7,8,9,10;" +	
+   * "10,11,12,13,14,15,16,17,18,19,20;" +	
+   * "20,21,22,23,24,25,26,27,28,29,30;" +	
+   * "30,31,32,33,34,35,36,37,38,39,40";  
+   *
+   * 1D array format (col_idx = 0):
+   * "0,1,2,3,4,5,6,7,8,9,10"
+   */
+	__var i, set, val, start, end;
+
+	if (col_idx < 0 || val_idx < 0 || !sizeof(array) ||
+	    (base != 10 && base != 16))
+		sunxi_panic(
+			"get_str_array_val() arguments mismatch\n Exiting...");
+
+	/* extrat collection(set) of values string by set index */
+	end = -1;
+	for (i = 0; i <= col_idx; i++) {
+		start = end + 1;
+		if ((end = __strFind(array, ";", start)) < 0) {
+			if (i < col_idx)
+				sunxi_panic(
+                                __smessage
+                                "Array collection index is out of range:\n",
+                                "         requested: ", col_idx, "\n",
+                                "         available: ", i, "\n",
+                                "Check string array format\n Exiting...");
+			end = sizeof(array);
+		}
+	}
+	set = __subString(array, start, end - start);
+	if (DEBUG_ALL())
+		__message "Array col_idx = ", col_idx, ", set = ", set;
+
+	/* extract value from set string by value index */
+	end = -1;
+	for (i = 0; i <= val_idx; i++) {
+		start = end + 1;
+		if ((end = __strFind(set, ",", start)) < 0) {
+			if (i < val_idx)
+				sunxi_panic(
+					__smessage
+					"Array value index is out of range:\n",
+					"              collection index:",
+					col_idx, "\n",
+					"         value index requested: ",
+					val_idx, "\n",
+					"         value index available: ", i,
+					"\n",
+					"Check string array format\n Exiting...");
+			end = sizeof(set);
+		}
+	}
+	val = __subString(set, start, end - start);
+	val = __strtoul(val, sizeof val, base);
+	if (DEBUG_ALL()) {
+		if (base == 10)
+			__message "Array val_idx = ", val_idx,
+				", val = ", val : % d;
+		else
+			__message "Array val_idx = ", val_idx, ", val = 0x",
+				val : % x;
+	}
+	return val;
+}
+
+mctl_set_bit_delays_dw()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_bit_delays_dw() ";
+
+	__var i, j;
+
+	clrbits(mctl_ctl__pgcr0, 1 << 26, "mctl_ctl-pgcr0");
+	for (i = 0; i < NR_OF_BYTE_LANES; i++)
+		for (j = 0; j < LINES_PER_BYTE_LANE; j++)
+			write(mctl_ctl__dx +
+				      (mctl_ctl__res11 - mctl_ctl__dx) / 4 * i +
+				      mctl_ctl__dx_bdlr + j * 4,
+			      DXBDLR_WRITE_DELAY(get_str_array_val(
+				      dx_write_delays, 10, i, j)) |
+				      DXBDLR_READ_DELAY(get_str_array_val(
+					      dx_read_delays, 10, i, j)),
+			      __smessage "mctl_ctl->dx[", i, "].bdlr[", j, "]");
+
+	for (i = 0; i < 31; i++)
+		write(mctl_ctl__acbdlr + i * 4,
+		      ACBDLR_WRITE_DELAY(
+			      get_str_array_val(ac_delays, 10, 0, i)),
+		      __smessage "mctl_ctl->acbdlr[", i, "]");
+
+	if (socid == "R40")
+		/* DQSn, DMn, DQn output enable bit delay */
+		for (i = 0; i < 4; i++)
+			write(mctl_ctl__dx +
+				      (mctl_ctl__res11 - mctl_ctl__dx) / 4 * i +
+				      mctl_ctl__dx_sdlr,
+			      0x6 << 24, __smessage "mctl_ctl->dx[", i,
+			      "].sdlr");
+
+	setbits(mctl_ctl__pgcr0, 1 << 26, "mctl_ctl->pgcr[0]");
+}
+
+mctl_phy_init_dw(val)
+{
+	if (DEBUG_CALLS())
+		__message "mctl_phy_init_dw(0x", val : % x, ")";
+
+	write(mctl_ctl__pir, val | PIR_INIT, "mctl_ctl->pir");
+	waitval(mctl_ctl__pgsr0, PGSR_INIT_DONE, 0x1, 1000);
+}
+
+mctl_v3s_zq_calibration_quirk_dw()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_v3s_zq_calibration_quirk_dw()";
+
+	__var reg_val;
+
+	modify(mctl_ctl__zqcr, 0xffffff, dram_zq & 0xffffff, "mctl_ctl->zqcr");
+	mctl_phy_init_dw(PIR_ZCAL);
+
+	reg_val = read(mctl_ctl__zqdr0, "mctl_ctl->zqdr[0]");
+	reg_val &= (0x1f << 16) | (0x1f << 0);
+	reg_val |= reg_val << 8;
+	write(mctl_ctl__zqdr0, reg_val, "mctl_ctl->zqdr[0]");
+
+	reg_val = read(mctl_ctl__zqdr1, "mctl_ctl->zqdr[1]");
+	reg_val &= (0x1f << 16) | (0x1f << 0);
+	reg_val |= reg_val << 8;
+	write(mctl_ctl__zqdr1, reg_val, "mctl_ctl->zqdr[1]");
+}
+
+bin_to_mgray(val)
+{
+	if (DEBUG_CALLS())
+		__message "bin_to_mgray(0x", val : % x, ")";
+
+	__var lookup_table32;
+	lookup_table32 = "00,01,02,03,06,07,04,05," +
+			 "0c,0d,0e,0f,0a,0b,08,09," +
+			 "18,19,1a,1b,1e,1f,1c,1d," + "14,15,16,17,12,13,10,11";
+
+	return get_str_array_val(lookup_table32, 16, 0, clamp(val, 0, 31));
+}
+
+mgray_to_bin(val)
+{
+	if (DEBUG_CALLS())
+		__message "mgray_to_bin(0x", val : % x, ")";
+
+	__var lookup_table32;
+	lookup_table32 = "00,01,02,03,06,07,04,05," +
+			 "0e,0f,0c,0d,08,09,0a,0b," +
+			 "1e,1f,1c,1d,18,19,1a,1b," + "10,11,12,13,16,17,14,15";
+
+	return get_str_array_val(lookup_table32, 16, 0, val & 0x1f);
+}
+
+mctl_h3_zq_calibration_quirk_dw()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_h3_zq_calibration_quirk_dw()";
+
+	__var zq_count;
+
+	if (dram_bus_width == 16)
+		zq_count = 4;
+	else
+		zq_count = 6;
+
+	if ((read(SUNXI_SRAMC_BASE + 0x24, "SUNXI_SRAMC_BASE + 0x24") & 0xff) ==
+		    0 &&
+	    (read(SUNXI_SRAMC_BASE + 0xf0, "SUNXI_SRAMC_BASE + 0xf0") & 0x1) ==
+		    0) {
+		__var reg_val;
+
+		modify(mctl_ctl__zqcr, 0xffff, dram_zq & 0xffff,
+		       "mctl_ctl->zqcr");
+
+		write(mctl_ctl__pir, PIR_CLRSR, "mctl_ctl->pir");
+		mctl_phy_init(PIR_ZCAL);
+
+		reg_val = read(mctl_ctl__zqdr0, "mctl_ctl->zqdr0");
+		reg_val &= (0x1f << 16) | (0x1f << 0);
+		reg_val |= reg_val << 8;
+		write(mctl_ctl__zqdr0, reg_val, "mctl_ctl->zqdr[0]");
+
+		reg_val = read(mctl_ctl__zqdr1, "mctl_ctl->zqdr[1]");
+		reg_val &= (0x1f << 16) | (0x1f << 0);
+		reg_val |= reg_val << 8;
+		write(mctl_ctl__zqdr1, reg_val, "mctl_ctl->zqdr[1]");
+		write(mctl_ctl__zqdr2, reg_val, "mctl_ctl->zqdr[2]");
+	} else {
+		__var i;
+		__var zq_val0, zq_val1, zq_val2, zq_val3, zq_val4,
+			zq_val5; //u16[6]
+		__var val; //u8
+
+		write(mctl_ctl__zqdr2, 0x0a0a0a0a, "mctl_ctl->zqdr[2]");
+
+		for (i = 0; i < zq_count; i++) {
+			__var zq;
+			zq = (dram_zq >> (i * 4)) & 0xf; //u8
+
+			write(mctl_ctl__zqcr,
+			      (zq << 20) | (zq << 16) | (zq << 12) | (zq << 8) |
+				      (zq << 4) | (zq << 0),
+			      "mctl_ctl->zqcr");
+
+			write(mctl_ctl__pir, PIR_CLRSR, "mctl_ctl->pir");
+			mctl_phy_init_dw(PIR_ZCAL);
+
+			//zq_val[i] = readl(&mctl_ctl__>zqdr[0]) & 0xff;
+			val = read(mctl_ctl__zqdr0, "mctl_ctl->zqdr[0]") & 0xff;
+			if (i == 0)
+				zq_val0 = val;
+			if (i == 1)
+				zq_val1 = val;
+			if (i == 2)
+				zq_val2 = val;
+			if (i == 3)
+				zq_val3 = val;
+			if (i == 4)
+				zq_val4 = val;
+			if (i == 5)
+				zq_val5 = val;
+
+			write(mctl_ctl__zqdr2, REPEAT_BYTE(val),
+			      "mctl_ctl->zqdr[2]");
+
+			write(mctl_ctl__pir, PIR_CLRSR, "mctl_ctl->pir");
+			mctl_phy_init(PIR_ZCAL);
+
+			val = read(mctl_ctl__zqdr0, "mctl_ctl->zqdr[0]") >> 24;
+
+			if (i == 0)
+				zq_val0 |= bin_to_mgray(mgray_to_bin(val) - 1)
+					   << 8;
+			if (i == 1)
+				zq_val1 |= bin_to_mgray(mgray_to_bin(val) - 1)
+					   << 8;
+			if (i == 2)
+				zq_val2 |= bin_to_mgray(mgray_to_bin(val) - 1)
+					   << 8;
+			if (i == 3)
+				zq_val3 |= bin_to_mgray(mgray_to_bin(val) - 1)
+					   << 8;
+			if (i == 4)
+				zq_val4 |= bin_to_mgray(mgray_to_bin(val) - 1)
+					   << 8;
+			if (i == 5)
+				zq_val5 |= bin_to_mgray(mgray_to_bin(val) - 1)
+					   << 8;
+		}
+
+		write(mctl_ctl__zqdr0, (zq_val[1] << 16) | zq_val[0],
+		      "mctl_ctl->zqdr[0]");
+		write(mctl_ctl__zqdr1, (zq_val[3] << 16) | zq_val[2],
+		      "mctl_ctl->zqdr[1]");
+		if (zq_count > 4)
+			write(mctl_ctl__zqdr2, (zq_val[5] << 16) | zq_val[4],
+			      "mctl_ctl->zqdr[2]");
+	}
+}
+
+mctl_channel_init_dw()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_channel_init_dw()";
+
+	mctl_set_cr_dw();
+	mctl_set_timing_params_dw();
+	mctl_set_master_priority_dw();
+
+	/* setting VTC, default disable all VT */
+	clrbits(mctl_ctl__pgcr0, (1 << 30) | 0x3f, "mctl_ctl->pgcr[0]");
+	if (socid == "H5")
+		setbits(mctl_ctl__pgcr1, (1 << 24) | (1 << 26),
+			"mctl_ctl->pgcr[1]");
+	else
+		modify(mctl_ctl__pgcr1, 1 << 24, 1 << 26, "mctl_ctl->pgcr[1]");
+
+	/* increase DFI_PHY_UPD clock */
+	write(mctl_com__protect, PROTECT_MAGIC, "mctl_com->protect");
+	__delay(1);
+	modify(mctl_ctl__upd2, 0xfff << 16, 0x50 << 16, "mctl_ctl->upd2");
+	write(mctl_com__protect, 0x0, "mctl_com->protect");
+	__delay(1);
+
+	/* set dramc odt */
+	__var i;
+	for (i = 0; i < 4; i++) {
+		__var clearmask, setmask;
+		clearmask = (0x3 << 4) | (0x1 << 1) | (0x3 << 2) | (0x3 << 12) |
+			    (0x3 << 14);
+
+		/* ODT on V3s is always OFF */
+		setmask = dram_odt && socid != "V3s" ? DX_GCR_ODT_DYNAMIC :
+						       DX_GCR_ODT_OFF;
+		if (socid == "H5") {
+			clearmask |= 0x2 << 8;
+			setmask |= 0x4 << 8;
+		}
+		modify(mctl_ctl__dx + (mctl_ctl__res11 - mctl_ctl__dx) / 4 * i +
+			       mctl_ctl__dx_gcr,
+		       clearmask, setmask, __smessage "mctl_ctl->dx[", i,
+		       "].gcr");
+	}
+
+	/* AC PDR should always ON */
+	modify(mctl_ctl__aciocr, socid == "H5" ? (0x1 << 11) : 0, 0x1 << 1,
+	       "mctl_ctl->aciocr");
+
+	/* set DQS auto gating PD mode */
+	setbits(mctl_ctl__pgcr2, 0x3 << 6, "mctl_ctl->pgcr[2]");
+
+	if (socid == "H3") {
+		/* dx ddr_clk & hdr_clk dynamic mode */
+		clrbits(mctl_ctl__pgcr0, (0x3 << 14) | (0x3 << 12),
+			"mctl_ctl->pgcr[0]");
+
+		/* dphy & aphy phase select 270 degree */
+		modify(mctl_ctl__pgcr2, (0x3 << 10) | (0x3 << 8),
+		       (0x1 << 10) | (0x2 << 8), "mctl_ctl->pgcr[2]");
+	} else if (socid == "V3s") {
+		/* dx ddr_clk & hdr_clk dynamic mode */
+		clrbits(mctl_ctl__pgcr0, (0x3 << 14) | (0x3 << 12),
+			"mctl_ctl-pgcr[0]");
+
+		/* dphy & aphy phase select 270 degree */
+		modify(mctl_ctl__pgcr2, (0x3 << 10) | (0x3 << 8),
+		       (0x1 << 10) | (0x1 << 8), "mctl_ctl->pgcr[2]");
+	} else if (socid == "A64" || socid == "H5") {
+		/* dphy & aphy phase select ? */
+		modify(mctl_ctl__pgcr2, (0x3 << 10) | (0x3 << 8),
+		       (0x0 << 10) | (0x3 << 8), mctl_ctl__ > pgcr[2]);
+	} else if (socid == "R40") {
+		/* dx ddr_clk & hdr_clk dynamic mode (tpr13[9] == 0) */
+		clrbits(mctl_ctl__pgcr0, (0x3 << 14) | (0x3 << 12),
+			"mctl_ctl->pgcr0");
+
+		/* dphy & aphy phase select ? */
+		modify(mctl_ctl__pgcr2, (0x3 << 10) | (0x3 << 8),
+		       (0x0 << 10) | (0x3 << 8), "mctl_ctl->pgcr[2]");
+	}
+
+	/* set half DQ */
+	if (!bus_full_width) {
+		if (dram_bus_width == 16 || socid == "V3s")
+			write(mctl_ctl__dx +
+				      (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 1 +
+				      mctl_ctl__dx_gcr,
+			      0x0, "mctl_ctl->dx[1].gcr");
+		else if (dram_bus_width == 32) {
+			write(mctl_ctl__dx +
+				      (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 2 +
+				      mctl_ctl__dx_gcr,
+			      0x0, "mctl_ctl->dx[2].gcr");
+			write(mctl_ctl__dx +
+				      (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 3 +
+				      mctl_ctl__dx_gcr,
+			      0x0, "mctl_ctl->dx[3].gcr");
+		} else {
+			sunxi_panic("Unsupported DRAM bus width!");
+		}
+	}
+	/* data training configuration */
+	modify(mctl_ctl__dtcr, 0xf << 24, (dual_rank ? 0x3 : 0x1) << 24,
+	       "mctl_ctl->dtcr");
+
+	mctl_set_bit_delays_dw();
+	__delay(1);
+
+	if (socid == "V3s") {
+		mctl_v3s_zq_calibration_quirk_dw();
+
+		mctl_phy_init_dw(PIR_PLLINIT | PIR_DCAL | PIR_PHYRST |
+				 PIR_DRAMRST | PIR_DRAMINIT | PIR_QSGATE);
+	} else if (socid == "H3") {
+		mctl_h3_zq_calibration_quirk_dw();
+
+		mctl_phy_init_dw(PIR_PLLINIT | PIR_DCAL | PIR_PHYRST |
+				 PIR_DRAMRST | PIR_DRAMINIT | PIR_QSGATE);
+	} else if (socid == "A64" || socid == "H5") {
+		modify(mctl_ctl__zqcr, 0xffffff, dram_zq, "mctl_ctl->zqcr");
+
+		mctl_phy_init_dw(PIR_ZCAL | PIR_PLLINIT | PIR_DCAL |
+				 PIR_PHYRST | PIR_DRAMRST | PIR_DRAMINIT |
+				 PIR_QSGATE);
+		/* no PIR_QSGATE for H5 ???? */
+	} else if (socid == "R40") {
+		modify(mctl_ctl__zqcr, 0xffffff, dram_zq, "mctl_ctl->zqcr");
+
+		mctl_phy_init_dw(PIR_ZCAL | PIR_PLLINIT | PIR_DCAL |
+				 PIR_PHYRST | PIR_DRAMRST | PIR_DRAMINIT);
+	}
+
+	/* detect ranks and bus width */
+	if (read(mctl_ctl__pgsr0, "mctl_ctl-pgsr[0]") & (0xfe << 20)) {
+		/* only one rank */
+		if ((dram_bus_width == 32 &&
+		     ((read(mctl_ctl__dx +
+				    (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 0 +
+				    mctl_ctl__dx_gsr0,
+			    "mctl_ctl->dx[0].gsr[0]") >>
+		       24) & 0x2 ||
+		      (read(mctl_ctl__dx +
+				    (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 1 +
+				    mctl_ctl__dx_gsr0,
+			    "mctl_ctl->dx[1].gsr[0]") >>
+		       24) & 0x2)) ||
+		    (dram_bus_width == 16 &&
+		     (read(mctl_ctl__dx +
+				   (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 0 +
+				   mctl_ctl__dx_gsr0,
+			   "mctl_ctl->dx[0].gsr[0]") >>
+		      24) & 0x2)) {
+			modify(mctl_ctl__dtcr, 0xf << 24, 0x1 << 24,
+			       "mctl_ctl-dtcr");
+			dual_rank = 0;
+		}
+		/* only half DQ width */
+		if (dram_bus_width == 32 &&
+		    (((read(mctl_ctl__dx +
+				    (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 2 +
+				    mctl_ctl__dx_gsr0,
+			    "mctl_ctl->dx[2].gsr[0]") >>
+		       24) &
+		      0x1) ||
+		     ((read(mctl_ctl__dx +
+				    (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 3 +
+				    mctl_ctl__dx_gsr0,
+			    "mctl_ctl->dx[3].gsr[0]") >>
+		       24) &
+		      0x1))) {
+			write(mctl_ctl__dx +
+				      (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 2 +
+				      mctl_ctl__dx_gcr,
+			      0x0, "mctl_ctl->dx[2].gcr");
+			write(mctl_ctl__dx +
+				      (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 3 +
+				      mctl_ctl__dx_gcr,
+			      0x0, "mctl_ctl->dx[3].gcr");
+			bus_full_width = 0;
+		}
+		if (dram_bus_width == 16 &&
+		    ((read(mctl_ctl__dx +
+				   (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 1 +
+				   mctl_ctl__dx_gsr0,
+			   "mctl_ctl->dx[1].gsr[0]") >>
+		      24) &
+		     0x1)) {
+			write(mctl_ctl__dx +
+				      (mctl_ctl__res11 - mctl_ctl__dx) / 4 * 1 +
+				      mctl_ctl__dx_gcr,
+			      0x0, "mctl_ctl->dx[1].gcr");
+			bus_full_width = 0;
+		}
+		mctl_set_cr_dw();
+		__delay(1);
+
+		/* re-train */
+		mctl_phy_init_dw(PIR_QSGATE);
+		if (read(mctl_ctl__pgsr0, "mctl_ctl->pgsr[0]") & (0xfe << 20))
+			return 1;
+	}
+
+	/* check the dramc status */
+	waitval(mctl_ctl__statr, 0x1, 0x1, 1000);
+
+	/* liuke added for refresh debug */
+	setbits(mctl_ctl__rfshctl0, 0x1 << 31, "mctl_ctl->rfshctl0");
+	__delay(1);
+	clrbits(mctl_ctl__rfshctl0, 0x1 << 31, "mctl_ctl->rfshctl0");
+	__delay(1);
+
+	/* set PGCR3, CKE polarity */
+	if (socid == "H3" || socid == "V3s")
+		write(mctl_ctl__pgcr3, 0x00aa0060, "mctl_ctl->pgcr[3]");
+	else if (socid == "A64" || socid == "H5" || socid == "R40")
+		write(mctl_ctl__pgcr3, 0xc0aa0060, "mctl_ctl->pgcr[3]");
+
+	/* power down zq calibration module for power save */
+	setbits(mctl_ctl__zqcr, ZQCR_PWRDOWN, "mctl_ctl->zqcr");
+
+	/* enable master access */
+	write(mctl_com__maer, 0xffffffff, "mctl_com->maer");
+
+	return 0;
+}
+
+mctl_set_cr_dw()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_set_cr_dw()";
+	__var mctl_cr;
+	mctl_cr = MCTL_CR_BL8 | MCTL_CR_INTERLEAVED;
+	if (dram_type == "DDR3")
+		mctl_cr |= MCTL_CR_DDR3 | MCTL_CR_2T;
+	if (dram_type == "DDR2")
+		mctl_cr |= MCTL_CR_DDR2 | MCTL_CR_2T;
+	if (dram_type == "LPDDR3")
+		mctl_cr |= MCTL_CR_LPDDR3 | MCTL_CR_1T;
+	write(mctl_com__cr,
+	      (mctl_cr |
+	       (bank_bits0 == 3 ? MCTL_CR_EIGHT_BANKS : MCTL_CR_FOUR_BANKS)) |
+		      bus_full_width << 12 |
+		      (dual_rank ? MCTL_CR_DUAL_RANK : MCTL_CR_SINGLE_RANK) |
+		      MCTL_CR_PAGE_SIZE(page_size0) |
+		      MCTL_CR_ROW_BITS(row_bits0),
+	      "mctl_com__cr");
+	if (dual_rank && (socid == "A64" || socid == "R40")) {
+		write(mctl_com__cr_r1,
+		      (bank_bits1 == 3 ? MCTL_CR_EIGHT_BANKS :
+					 MCTL_CR_FOUR_BANKS) |
+			      MCTL_CR_BUS_FULL_WIDTH(bus_full_width) |
+			      MCTL_CR_DUAL_RANK |
+			      MCTL_CR_PAGE_SIZE(page_size1) |
+			      MCTL_CR_ROW_BITS(row_bits1),
+		      "mctl_com->cr_r1");
+	}
+
+	if (socid == "R40" && !dual_rank) {
+		/* Mux pin to A15 address line for single rank memory. */
+		setbits(mctl_com__cr_r1, MCTL_CR_R1_MUX_A15, "mctl_com->cr_r1");
+	}
+}
+
+mctl_calc_rank_size_dw(rank)
+{
+	if (DEBUG_CALLS())
+		__message "mctl_calc_rank_size_dw(", rank : % d, ")";
+	if (rank == 0)
+		return (1 << (row_bits0 + bank_bits0)) * page_size0;
+	else
+		return (1 << (row_bits1 + bank_bits1)) * page_size1;
+}
+
+mctl_r40_detect_rank_count_dw()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_r40_detect_rank_count_dw()";
+
+	__var rank1_base;
+	rank1_base = dram_base + mctl_calc_rank_size_dw(0);
+
+	/* Enable read time out */
+	setbits(mctl_ctl__pgcr0, 0x1 << 25, "mctl_ctl->pgcr[0]");
+
+	read(rank1_base, "rank1_base");
+	__delay(1);
+
+	if (read(mctl_ctl__pgsr0, "mctl_ctl->pgsr[0]") & (0x1 << 13)) {
+		modify(mctl_ctl__dtcr, 0xf << 24, 0x1 << 24, "mctl_ctl->dtcr");
+		dual_rank = 0;
+	}
+
+	/* Reset PHY FIFO to clear it */
+	clrbits(mctl_ctl__pgcr0, 0x1 << 26, "mctl_ctl->pgcr[0]");
+	__delay(1);
+	setbits(mctl_ctl__pgcr0, 0x1 << 26, "mctl_ctl->pgcr[0]");
+
+	/* Clear error status */
+	setbits(mctl_ctl__pgcr0, 0x1 << 24, "mctl_ctl->pgcr[0]");
+
+	/* Clear time out flag */
+	clrbits(mctl_ctl__pgsr0, 0x1 << 13, "mctl_ctl->pgsr[0]");
+
+	/* Disable read time out */
+	clrbits(mctl_ctl__pgcr0, 0x1 << 25, "mctl_ctl->pgcr[0]");
+}
+
+dsb()
+{
+	if (DEBUG_CALLS())
+		__message "dsb()";
+  /* 
+   * DMB - whenever a memory access requires ordering with regards to another 
+   * memory access.
+   * DSB - whenever a memory access needs to have completed before program 
+   * execution progresses.
+   * ISB - whenever instruction fetches need to explicitly take place after 
+   * a certain point in the program, for example after memory map updates or 
+   * after writing code to be executed. (In practice, this means "throw away 
+   * any prefetched instructions at this point".)
+   *
+   * #define DSB	asm volatile ("dsb sy" : : : "memory")
+   * 
+   * i believe it doesn't need here but still implement
+   */
+	__var val;
+
+	/* DSB */
+	__writeMemory32(0xf57ff04f, sram_base, "Memory");
+
+	/* MOV r0, #0xab */
+	__writeMemory32(0xe3a000ab, sram_base + 4, "Memory");
+
+	/* MOV r1, #0 */
+	__writeMemory32(0xe3a01000, sram_base + 8, "Memory");
+
+	/* STR r0, [r1] */
+	__writeMemory32(0xe5810000, sram_base + 12, "Memory");
+
+	if (__readMemory32(0, "Memory") != 0xf57ff04f ||
+	    __readMemory32(4, "Memory") != 0xe3a000ab ||
+	    __readMemory32(8, "Memory") != 0xe3a01000 ||
+	    __readMemory32(12, "Memory") != 0xe5810000)
+		sunxi_panic(__smessage "DSB fail! Memory check error\n" +
+				    "Check sram_base = ",
+			    sram_base, " value\n" + "Exiting...");
+	PC = 0;
+	__hwRunToBreakpoint(16, 1000);
+	val = __readMemory32(0, "Memory");
+	if (val != 0xAB)
+		sunxi_panic(__smessage
+				    "DSB fail! Post DSB memory check error\n" +
+				    "         expected: 0xAB\n" +
+				    "           readed: ",
+			    val, "\n" + "        sram_base: ", sram_base,
+			    "\n" + "Exiting...");
+}
+
+/*
+ * Test if memory at offset offset matches memory at a certain base
+ */
+mctl_mem_matches_base_dw(offset, base)
+{
+	if (DEBUG_CALLS())
+		__message "mctl_mem_matches_base_dw(0x", offset : % x, ", 0x",
+			base : % x, ")";
+
+	/* Try to write different values to RAM at two addresses */
+	write(base, 0, "base");
+	write(base + offset, 0xaa55aa55, "base + offset");
+	dsb();
+	/* Check if the same value is actually observed when reading back */
+	return read(base, "base") == read(base + offset, "base + offset");
+}
+
+mctl_auto_detect_dram_size_rank0_dw(base)
+{
+	if (DEBUG_CALLS())
+		__message "mctl_auto_detect_dram_size_rank0_dw(0x", base : % x,
+			")";
+
+	__var break;
+	break = 0;
+	/* detect row address bits */
+	page_size0 = 512;
+	row_bits0 = 16;
+	bank_bits0 = 2;
+	mctl_set_cr_dw();
+
+	for (row_bits0 = 11, break = 0; row_bits0 < 16 && !break; row_bits0++) {
+		if (mctl_mem_matches_base_dw(
+			    (1 << (row_bits0 + bank_bits0)) * page_size0, base))
+			break = 1;
+	}
+	if (break)
+		row_bits0--;
+
+	/* detect bank address bits */
+	bank_bits0 = 3;
+	mctl_set_cr_dw();
+
+	for (bank_bits0 = 2, break = 0; bank_bits0 < 3 && !break; bank_bits0++)
+		if (mctl_mem_matches_base_dw((1 << bank_bits0) * page_size0,
+					     base))
+			break = 1;
+	if (break)
+		bank_bits0--;
+
+	/* detect page size */
+	page_size0 = 8192;
+	mctl_set_cr_dw();
+
+	for (page_size0 = 512, break = 0; page_size0 < 8192 && !break;
+	     page_size0 *= 2)
+		if (mctl_mem_matches_base_dw(page_size0, base))
+			break = 1;
+	if (break)
+		page_size0 /= 2;
+}
+
+mctl_auto_detect_dram_size_rank1_dw(base)
+{
+	if (DEBUG_CALLS())
+		__message "mctl_auto_detect_dram_size_rank1_dw(", base : % x,
+			")";
+
+	__var break;
+	break = 0;
+
+	/* detect row address bits */
+	page_size1 = 512;
+	row_bits1 = 16;
+	bank_bits1 = 2;
+	mctl_set_cr_dw();
+
+	for (row_bits1 = 11, break = 0; row_bits1 < 16; row_bits1++)
+		if (mctl_mem_matches_base_dw(
+			    (1 << (row_bits1 + bank_bits1)) * page_size1, base))
+			break = 1;
+	if (break)
+		row_bits1--;
+
+	/* detect bank address bits */
+	bank_bits1 = 3;
+	mctl_set_cr_dw();
+
+	for (bank_bits1 = 2, break = 0; bank_bits1 < 3 && !break; bank_bits1++)
+		if (mctl_mem_matches_base_dw((1 << bank_bits1) * page_size1,
+					     base))
+			break = 1;
+	if (break)
+		bank_bits--;
+
+	/* detect page size */
+	page_size1 = 8192;
+	mctl_set_cr_dw();
+
+	for (page_size1 = 512, break = 0; page_size1 < 8192 && !break;
+	     page_size1 *= 2)
+		if (mctl_mem_matches_base_dw(page_size1, base))
+			break = 1;
+	if (break)
+		page_size1 /= 2;
+}
+
+mctl_auto_detect_dram_size_dw()
+{
+	if (DEBUG_CALLS())
+		__message "mctl_auto_detect_dram_size_dw()";
+	mctl_auto_detect_dram_size_rank0_dw(
+		dram_base);
+
+	if ((socid == "A64" || socid == "R40") && dual_rank) {
+		mctl_auto_detect_dram_size_rank1_dw(
+			dram_base +
+			mctl_calc_rank_size_dw(
+				0));
+	}
+}
+
+__var dram_size;
+
+sunxi_dw_dram_init()
+{
+	if(DEBUG_CALLS())
+		__message "sunxi_dw_dram_init()";
+	if (socid == "H3") {
+		dx_read_delays = SUN8I_H3_DX_READ_DELAYS;
+		dx_write_delays = SUN8I_H3_DX_WRITE_DELAYS;
+		ac_delays = SUN8I_H3_AC_DELAYS;
+	} else if (socid == "V3s") {
+		dx_read_delays = SUN8I_V3S_DX_READ_DELAYS;
+		dx_write_delays = SUN8I_V3S_DX_WRITE_DELAYS;
+		ac_delays = SUN8I_V3S_AC_DELAYS;
+	} else if (socid == "R40") {
+		dx_read_delays = SUN8I_R40_DX_READ_DELAYS;
+		dx_write_delays = SUN8I_R40_DX_WRITE_DELAYS;
+		ac_delays = SUN8I_R40_AC_DELAYS;
+	} else if (socid == "A64") {
+		dx_read_delays = SUN50I_A64_DX_READ_DELAYS;
+		dx_write_delays = SUN50I_A64_DX_WRITE_DELAYS;
+		ac_delays = SUN50I_A64_AC_DELAYS;
+	} else if (socid == "H5") {
+		dx_read_delays = SUN8I_H5_DX_READ_DELAYS;
+		dx_write_delays = SUN8I_H5_DX_WRITE_DELAYS;
+		ac_delays = SUN8I_H5_AC_DELAYS;
+	} else
+		sunxi_panic("unsupported socid: ", socid);
+	mctl_sys_init_dw();
+	if (mctl_channel_init_dw())
+		sunxi_panic("mctl_channel_init_dw() fail!");
+	if (dual_rank)
+		write(mctl_ctl__odtmap, 0x00000303, "mctl_ctl->odtmap");
+	else
+		write(mctl_ctl__odtmap, 0x00000201, "mctl_ctl->odtmap");
+	__delay(1);
+	if (socid == "H3")
+		write(odtcfg, 0x0c000400, "odtcfg");
+	if (socid == "A64" || socid == "H5" || socid == "R40") {
+		/* VTF enable (tpr13[8] == 1) */
+		setbits(vtfcr, (socid != "A64" ? 3 : 2) << 8, "vtfcr");
+		clrbits(pgcr2, 1 << 13, "pgcr2");
+	}
+	/* clear credit value */
+	setbits(mctl_com__cccr, 1 << 31, "mctl_com->cccr");
+	__delay(1);
+	if (socid == "R40") {
+		mctl_r40_detect_rank_count_dw();
+		mctl_set_cr_dw();
+	}
+	mctl_auto_detect_dram_size_dw();
+	mctl_set_cr_dw();
+	dram_size = mctl_calc_rank_size_dw(0);
+	if (socid == "A64" || socid == "R40") {
+		if (dual_rank)
+			dram_size += mctl_calc_rank_size_dw(1);
+	} else if (dual_rank) {
+		dram_size *= 2;
+	}
+}
+
+suniv_dram_init()
+{
+	sunxi_panic(
+		"SUNIV DRAM init unemplemented\n" +
+		"You can do it and make PR!\n" +
+		"https://github.com/u-boot/u-boot/blob/"+
+                "3c3f1626919cd93cbe6c56e3849937de5be18dbb/arch/arm/"+
+                "mach-sunxi/dram_suniv.c#L346");
+}
+
+sun6i_dram_init()
+{
+	sunxi_panic("SUN6I DRAM init unemplemented\n" +
+		    "You can do it and make PR!\n" +
+		    "https://github.com/u-boot/u-boot/blob/" +
+		    "3c3f1626919cd93cbe6c56e3849937de5be18dbb/arch/arm/" +
+		    "mach-sunxi/dram_sun6i.c#L330");
+}
+
+sunxi_dram_init()
+{
+	if (sunxi == "SUN8I")
+		sunxi_dw_dram_init();
+	else if (sunxi == "SUN50I") {
+		if (socid == "A64" || socid == "H5")
+			sunxi_dw_dram_init();
+		else
+			sunxi_panic("unsupported socid parameter");
+	} else if (sunxi == "SUNIV")
+		suniv_dram_init();
+	else if (sunxi == "SUN6I")
+		sun6i_dram_init();
+	else
+		sunxi_panic("unsupported sunxi parameter");
+}
+
+/* ************************************************************************** */
+
+clock_set_pll5(clk, sigma_delta_enable)
+{
+	if (DEBUG_CALLS())
+		__message "clock_set_pll5()";
+
+	__var max_n, k, m;
+	max_n = 32;
+	k = 1;
+	m = 2;
+
+	if (socid == "H3" || socid == "H5")
+		modify(ccm__pll5_tuning_cfg,
+		       CCM_PLL5_TUN_LOCK_TIME_MASK |
+			       CCM_PLL5_TUN_INIT_FREQ_MASK,
+		       CCM_PLL5_TUN_LOCK_TIME(2) | CCM_PLL5_TUN_INIT_FREQ(16),
+		       "ccm->pll5_tuning_cfg");
+
+	if (sigma_delta_enable)
+		write(ccm__pll5_pattern_cfg, CCM_PLL5_PATTERN,
+		      "ccm->pll5_pattern_cfg");
+
+	/* PLL5 rate = 24000000 * n * k / m */
+	if (clk > 24000000 * k * max_n / m) {
+		m = 1;
+		if (clk > 24000000 * k * max_n / m)
+			k = 2;
+	}
+	write(ccm__pll5_cfg,
+	      CCM_PLL5_CTRL_EN |
+		      (sigma_delta_enable ? CCM_PLL5_CTRL_SIGMA_DELTA_EN : 0) |
+		      CCM_PLL5_CTRL_UPD |
+		      CCM_PLL5_CTRL_N(clk / (24000000 * k / m)) |
+		      CCM_PLL5_CTRL_K(k) | CCM_PLL5_CTRL_M(m),
+	      "ccm->pll5_cfg");
+
+	__delay(1);
+}
+
+clock_set_pll1(clock)
+{
+	__var p, k, m, val;
+	p = 0;
+	k = 1;
+	m = 1;
+
+	if (DEBUG_ALL())
+		__message "setup pll1 to ", clock / 1000000, ".",
+			clock % 1000000, "MHz";
+
+	if (clock > 1152000000)
+		k = 2;
+	else if (clock > 768000000) {
+		k = 4;
+		m = 2;
+	}
+
+	/* Switch to 24MHz clock while changing PLL1 */
+	write(ccm__cpu_axi_cfg,
+	      AXI_DIV_3 << AXI_DIV_SHIFT | ATB_DIV_2 << ATB_DIV_SHIFT |
+		      CPU_CLK_SRC_OSC24M << CPU_CLK_SRC_SHIFT,
+	      "ccm->cpu_axi_cfg");
+
+	/*
+   * sun6i: PLL1 rate = ((24000000 * n * k) >> 0) / m   (p is ignored)
+   * sun8i: PLL1 rate = ((24000000 * n * k) >> p) / m
+  */
+	write(ccm__pll1_cfg,
+	      CCM_PLL1_CTRL_EN | CCM_PLL1_CTRL_P(p) |
+		      CCM_PLL1_CTRL_N(clock / (24000000 * k / m)) |
+		      CCM_PLL1_CTRL_K(k) | CCM_PLL1_CTRL_M(m),
+	      "ccm->pll1_cfg");
+	if (DEBUG_ALL())
+		__message "waiting pll1 lock";
+	val = waitbits(ccm__pll1_cfg, CCM_PLL1_CTRL_LOCK);
+	if (DEBUG_ALL())
+		__message "pll1 locked, readed back value is 0x", val : % x;
+
+	/* Switch CPU to PLL1 */
+	if (DEBUG_ALL())
+		__message "connect CPU to pll1";
+	if (sunxi == "SUNIV")
+		write(ccm__cpu_axi_cfg, CPU_CLK_SRC_PLL1 << CPU_CLK_SRC_SHIFT,
+		      "ccm->cpu_axi_cfg");
+	else {
+		write(ccm__cpu_axi_cfg,
+		      AXI_DIV_3 << AXI_DIV_SHIFT | ATB_DIV_2 << ATB_DIV_SHIFT |
+			      CPU_CLK_SRC_PLL1 << CPU_CLK_SRC_SHIFT,
+		      "ccm->cpu_axi_cfg");
+	}
+	if (DEBUG_ALL())
+		__message "setup pll1 end";
+}
+
+clock_init_safe()
+{
+	__var val;
+	if(DEBUG_CALLS())
+		__message "clock_init_safe()";
+
+	if (socid != "H3" && socid != "H5" && sunxi != "SUN50I" &&
+	    sunxi != "SUNIV") {
+               /* In fact PRCM reading on V3s is always zero.
+                * This thread says that V3s does not have PRCM: 
+                * https://linux-arm-kernel.infradead.narkive.com/CJgLNo9D/patch-v2-0-5-add-support-for-the-r-ccu-on-allwinner-h3-a64-socs
+                * But u-boot does this initialization 
+                * Doing that too anyway
+                */
+		modify(prcm__pll_ctrl1, PRCM_PLL_CTRL_LDO_KEY_MASK,
+		       PRCM_PLL_CTRL_LDO_KEY, "prcm->pll_ctrl1");
+		if (DEBUG_ALL())
+			__message "set cpu core voltage to ",
+				cpu_voltage / 1000, ".", cpu_voltage % 1000,
+				"V";
+
+		modify(prcm__pll_ctrl1, ~(PRCM_PLL_CTRL_LDO_KEY_MASK),
+		       PRCM_PLL_CTRL_LDO_DIGITAL_EN |
+			       PRCM_PLL_CTRL_LDO_ANALOG_EN |
+			       PRCM_PLL_CTRL_EXT_OSC_EN |
+			       (cpu_voltage == 1370 ?
+					PRCM_PLL_CTRL_LDO_OUT_H(cpu_voltage) |
+						PRCM_PLL_CTRL_IN_PWR_HIGH :
+					PRCM_PLL_CTRL_LDO_OUT_L(cpu_voltage)),
+		       "prcm->pll_ctrl1");
+		clrbits(prcm__pll_ctrl1, PRCM_PLL_CTRL_LDO_KEY_MASK,
+			"prcm->pll_ctrl1");
+	}
+
+	if (socid == "R40" || sunxi == "SUN50I")
+		write(ccm__pll_lock_ctrl, GENMASK(12, 0), "ccm->pll_lock_ctrl");
+
+	clock_set_pll1(408000000);
+	write(ccm__pll6_cfg, PLL6_CFG_DEFAULT, "ccm->pll6_cfg");
+	if (DEBUG_ALL())
+		__message "waiting pll6 lock";
+	val = waitbits(ccm__pll6_cfg, CCM_PLL6_CTRL_LOCK);
+	if (DEBUG_ALL())
+		__message "pll6 locked, readed back value is 0x", val : % x;
+	write(ccm__ahb1_apb1_div, AHB1_ABP1_DIV_DEFAULT, "ccm->ahb1_apb1_div");
+
+	if (sunxi != "SUNIV") {
+		if (sunxi == "SUN50I")
+			write(ccm__mbus0_clk_cfg, MBUS_CLK_DEFAULT_SUN50I,
+			      "ccm->mbus0_clk_cfg");
+		else if (sunxi == "SUN8I")
+			write(ccm__mbus0_clk_cfg, MBUS_CLK_DEFAULT_SUN8I,
+			      "ccm->mbus0_clk_cfg");
+		else
+			write(ccm__mbus0_clk_cfg, MBUS_CLK_DEFAULT,
+			      "ccm->mbus0_clk_cfg");
+		if (sunxi == "SUN6I")
+			write(ccm__mbus1_clk_cfg, MBUS_CLK_DEFAULT,
+			      "ccm->mbus1_clk_cfg");
+	}
+
+	if (socid == "R40" && socopt == "AHCI") {
+		__message "R40 SATA clock init";
+		setbits(ccm__sata_pll_cfg, CCM_SATA_PLL_DEFAULT,
+			"ccm->sata_pll_cfg");
+		setbits(ccm__ahb_reset0_cfg, 0x1 << AHB_GATE_OFFSET_SATA,
+			"ccm->ahb_reset0_cfg");
+		setbits(ccm__ahb_gate0, 0x1 << AHB_GATE_OFFSET_SATA,
+			"ccm->ahb_gate0");
+		setbits(ccm__sata_clk_cfg, CCM_SATA_CTRL_ENABLE,
+			"ccm->sata_clk_cfg");
+		__message "R40 SATA clock init end";
+	}
+	if (DEBUG_ALL())
+		__message "clock_init_safe() end";
+}
+
+clock_init_sec()
+{
+	if (socid == "H3" || socid == "H5") {
+		__message "clock_init_sec() start";
+		setbits(ccm__ccu_sec_switch,
+			CCM_SEC_SWITCH_MBUS_NONSEC | CCM_SEC_SWITCH_BUS_NONSEC |
+				CCM_SEC_SWITCH_PLL_NONSEC,
+			"ccm->ccu_sec_switch");
+		setbits(prcm__prcm_sec_switch,
+			PRCM_SEC_SWITCH_APB0_CLK_NONSEC |
+				PRCM_SEC_SWITCH_PLL_CFG_NONSEC |
+				PRCM_SEC_SWITCH_PWR_GATE_NONSEC,
+			"prcm->prcm_sec_switch");
+		__message "clock_init_sec() end";
+	}
+}

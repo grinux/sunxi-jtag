@@ -1,0 +1,1 @@
+#include <asm/arch-sunxi/cpu_sun4i.h>
