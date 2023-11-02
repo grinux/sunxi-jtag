@@ -276,7 +276,7 @@ ENVL_NAND, ENVL_SPI_FLASH};
 #define dectoul(...)                    (0)
 #define spl_in_proper()                 (0)
 #define mmc_get_blk_desc(...)           ((struct blk_desc *)0)
-#if V3s
+#if SOC_ID_V3S || SOC_ID_H3
 #define clock_set_pll11(...)            __no_operation()
 #endif            
 
