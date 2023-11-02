@@ -971,7 +971,7 @@
 #undef CONFIG_VIDEO_DT_SIMPLEFB
 #ifndef DRAM_APP
 #undef CONFIG_SY8106A_POWER /* I2C not supported yet */
-#endifq
+#endif
 #include <configs/sun8i.h>
 
 #elif SOC_ID_H5
