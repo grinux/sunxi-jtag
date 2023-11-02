@@ -1,6 +1,6 @@
 ## IAR Embedded Workbench JTAG support for Allwinner SoCs. 
 
-#### Currently tested on using uSD to JTAG breakout board: 
+#### Currently tested using uSD to JTAG breakout board on: 
 - [x] V3s (Lichee Pi Zero)
 - [x] H3 (Orange Pi PC)
 - [ ] H5 (Orange Pi PC2)
