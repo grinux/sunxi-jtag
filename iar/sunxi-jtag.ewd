@@ -40,11 +40,11 @@
                 </option>
                 <option>
                     <name>MemOverride</name>
-                    <state>0</state>
+                    <state>1</state>
                 </option>
                 <option>
                     <name>MemFile</name>
-                    <state></state>
+                    <state>$PROJ_DIR$\ddf\V3s.ddf</state>
                 </option>
                 <option>
                     <name>RunToEnable</name>
@@ -1651,11 +1651,11 @@
                 </option>
                 <option>
                     <name>MemOverride</name>
-                    <state>0</state>
+                    <state>1</state>
                 </option>
                 <option>
                     <name>MemFile</name>
-                    <state></state>
+                    <state>$PROJ_DIR$\ddf\H3.ddf</state>
                 </option>
                 <option>
                     <name>RunToEnable</name>
@@ -3266,11 +3266,11 @@
                 </option>
                 <option>
                     <name>MemOverride</name>
-                    <state>0</state>
+                    <state>1</state>
                 </option>
                 <option>
                     <name>MemFile</name>
-                    <state></state>
+                    <state>$PROJ_DIR$\ddf\V3s.ddf</state>
                 </option>
                 <option>
                     <name>RunToEnable</name>
@@ -3288,7 +3288,8 @@
                     <name>CExtraOptions</name>
                     <state>--macro_param init_mode="mac"</state>
                     <state>--macro_param socid="V3s"</state>
-                    <state>--macro_param CONFIG_DRAM_ODT_EN=1</state>
+                    <state>--macro_param debug=3</state>
+                    <state>--macro_param CONFIG_DRAM_ODT_EN=0</state>
                     <state>--macro_param CONFIG_SYS_CLK_FREQ=1008000000</state>
                     <state>--macro_param CONFIG_DRAM_CLK=360</state>
                     <state>--macro_param CONFIG_SUNXI_DRAM_DW_16BIT=1</state>
@@ -4886,11 +4887,11 @@
                 </option>
                 <option>
                     <name>MemOverride</name>
-                    <state>0</state>
+                    <state>1</state>
                 </option>
                 <option>
                     <name>MemFile</name>
-                    <state></state>
+                    <state>$PROJ_DIR$\ddf\H3.ddf</state>
                 </option>
                 <option>
                     <name>RunToEnable</name>

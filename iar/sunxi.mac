@@ -42,8 +42,8 @@ __param CFG_SYS_SDRAM_BASE = -1;
 
 __param DEBUG_NONE_FLAG = (0);
 __param DEBUG_CALLS_FLAG = (1 << 0);
-__param DEBUG_IO_FLAG = (1 << 2);
-__param DEBUG_ALL_FLAG = (1 << 3);
+__param DEBUG_IO_FLAG = (1 << 1);
+__param DEBUG_ALL_FLAG = (1 << 2);
 /* valid only if init_mode = "mac" */
 __param debug = DEBUG_NONE_FLAG;
 

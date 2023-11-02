@@ -774,7 +774,7 @@
                 </option>
                 <option>
                     <name>IlinkIcfFile</name>
-                    <state>$PROJ_DIR$\sunxi-dram-init.icf</state>
+                    <state>$PROJ_DIR$\icf\sunxi-dram-init.icf</state>
                 </option>
                 <option>
                     <name>IlinkIcfFileSlave</name>
@@ -1867,7 +1867,7 @@
                 </option>
                 <option>
                     <name>IlinkIcfFile</name>
-                    <state>$PROJ_DIR$\sunxi-dram-init.icf</state>
+                    <state>$PROJ_DIR$\icf\sunxi-dram-init.icf</state>
                 </option>
                 <option>
                     <name>IlinkIcfFileSlave</name>
@@ -2960,7 +2960,7 @@
                 </option>
                 <option>
                     <name>IlinkIcfFile</name>
-                    <state>$PROJ_DIR$\sunxi-dram-app.icf</state>
+                    <state>$PROJ_DIR$\icf\sunxi-dram-app.icf</state>
                 </option>
                 <option>
                     <name>IlinkIcfFileSlave</name>
@@ -4053,7 +4053,7 @@
                 </option>
                 <option>
                     <name>IlinkIcfFile</name>
-                    <state>$PROJ_DIR$\sunxi-dram-app.icf</state>
+                    <state>$PROJ_DIR$\icf\sunxi-dram-app.icf</state>
                 </option>
                 <option>
                     <name>IlinkIcfFileSlave</name>
@@ -4374,19 +4374,31 @@
         </settings>
     </configuration>
     <group>
-        <name>icf</name>
-        <file>
-            <name>$PROJ_DIR$\sunxi-dram-app.icf</name>
-        </file>
-        <file>
-            <name>$PROJ_DIR$\sunxi-dram-init.icf</name>
-        </file>
-    </group>
-    <group>
-        <name>macro</name>
-        <file>
-            <name>$PROJ_DIR$\sunxi.mac</name>
-        </file>
+        <name>assets</name>
+        <group>
+            <name>ddf</name>
+            <file>
+                <name>$PROJ_DIR$\ddf\H3.ddf</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\ddf\V3s.ddf</name>
+            </file>
+        </group>
+        <group>
+            <name>icf</name>
+            <file>
+                <name>$PROJ_DIR$\sunxi-dram-app.icf</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\sunxi-dram-init.icf</name>
+            </file>
+        </group>
+        <group>
+            <name>macro</name>
+            <file>
+                <name>$PROJ_DIR$\sunxi.mac</name>
+            </file>
+        </group>
     </group>
     <group>
         <name>u-boot</name>
@@ -8185,6 +8197,9 @@
             <configuration>V3s-dram-app</configuration>
             <configuration>H3-dram-app</configuration>
         </excluded>
+    </file>
+    <file>
+        <name>$PROJ_DIR$\..\src\sunxi_jtag.h</name>
     </file>
     <file>
         <name>$PROJ_DIR$\..\src\write.c</name>
