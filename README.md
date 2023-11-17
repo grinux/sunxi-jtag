@@ -33,16 +33,16 @@ As a side effect of this work, the project allows run the original U-Boot initia
 Performance between them is not noticeable. 
 But if you want to use binary mode or just want to play with SUNXI-related U-Boot code under IAR there are additional steps:
 
-11. Open sunxi-jtag.ewp and select a suitable dram-init target (V3s-dram-init, H3-dram-init, etc)
-12. In sunxi_jtag.h set CFG_SYS_INIT_DEBUG to 1 to enable console output for dram-init target.
-13. Build. File sunXX-YYY-dram-init.hex will be generated.
-14. Debug if you want.
-15. Change the target back to dram-app.
-16. In Options->Debugger->Extra Options change --macro_param init_mode="mac" to --macro_param init_mode="bin". 
+10. Open sunxi-jtag.ewp and select a suitable dram-init target (V3s-dram-init, H3-dram-init, etc)
+11. In sunxi_jtag.h set CFG_SYS_INIT_DEBUG to 1 to enable console output for dram-init target.
+12. Build. File sunXX-YYY-dram-init.hex will be generated.
+13. Debug if you want.
+14. Change the target back to dram-app.
+15. In Options->Debugger->Extra Options change --macro_param init_mode="mac" to --macro_param init_mode="bin". 
 This tells sunxi.mac to go into binary mode and load and run generated hex file before main debugee.
-17. Start debugging.
-18. Check the debug log to see hex file loaded and executed properly.
-19. Enjoy.
+16. Start debugging.
+17. Check the debug log to see hex file loaded and executed properly.
+18. Enjoy.
 
 If you have any trouble write few words [here](https://github.com/grinux/sunxi-jtag/issues) or make PR
 
