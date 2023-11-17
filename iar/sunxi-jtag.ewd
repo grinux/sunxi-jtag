@@ -3288,7 +3288,6 @@
                     <name>CExtraOptions</name>
                     <state>--macro_param init_mode="mac"</state>
                     <state>--macro_param socid="V3s"</state>
-                    <state>--macro_param debug=3</state>
                     <state>--macro_param CONFIG_DRAM_ODT_EN=0</state>
                     <state>--macro_param CONFIG_SYS_CLK_FREQ=1008000000</state>
                     <state>--macro_param CONFIG_DRAM_CLK=360</state>

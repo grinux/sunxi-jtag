@@ -18,5 +18,5 @@ Memory =  SFR              Memory      0x01000000  0x3F507FFF  W
 Memory =  DRAM             Memory      0x40000000  0xBfffffff  RW  
 Memory =  BROM             Memory      0xFFFF0000  0xFFFFFFFF  R
 
-;[SfrInclude]
-;File = H3.svd
+[SfrInclude]
+File = ..\..\svd\H3.svd

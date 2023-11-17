@@ -17,5 +17,5 @@ Memory =  SFR              Memory      0x0000F000  0x3FFFFFFF  W
 Memory =  DRAM             Memory      0x40000000  0x43ffffff  RW  
 Memory =  BROM             Memory      0xFFFF0000  0xFFFF7FFF  R
 
-;[SfrInclude]
-;File = V3s.svd
+[SfrInclude]
+File = ..\..\svd\V3s.svd
