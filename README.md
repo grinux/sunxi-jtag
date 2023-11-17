@@ -16,15 +16,14 @@ It was done by porting the U-Boot clock and DRAM initialization code into an IAR
 
 Steps:  
 1. Setup IAR, J-Link, board, USB dongle(optional)
-2. Clone repo.
-3. Clone U-Boot from sunxi-jtag dir: git clone --depth=1 https://github.com/u-boot/u-boot.git 
-4. Open sunxi-jtag.ewp.
-5. In sunxi_jtag.h change CFG_SYS_UART to desired console UART.
-6. Build dram-app target.
-7. Start debugging.
-8. If USB dongle is connected you will see "Hello from DRAM" output.
-9. Edit linker configuration sunxi-dram-app.icf to set desired code area size.
-10. Enjoy running applications from DRAM without unwanted tricks.
+2. Clone repo git clone --recurse-submodules https://github.com/grinux/sunxi-jtag.git  
+3. Open sunxi-jtag.ewp.
+4. In sunxi_jtag.h change CFG_SYS_UART to desired console UART.
+5. Build dram-app target.
+6. Start debugging.
+7. If USB dongle is connected you will see "Hello from DRAM" output.
+8. Edit linker configuration sunxi-dram-app.icf to set desired code area size.
+9. Enjoy running applications from DRAM without unwanted tricks.
 
 As a side effect of this work, the project allows run the original U-Boot initialization code, and therefore sunxi.mac has two working modes:
 
@@ -45,12 +44,7 @@ This tells sunxi.mac to go into binary mode and load and run generated hex file 
 18. Check the debug log to see hex file loaded and executed properly.
 19. Enjoy.
 
-Based on U-Boot 29427e6 and if you have any build issues remove u-boot folder and:
-1. git clone https://github.com/u-boot/u-boot.git 
-2. cd u-boot
-3. git reset --hard 29427e6 
-4. try to rebuild
+If you have any trouble write few words [here](https://github.com/grinux/sunxi-jtag/issues) or make PR
 
-If you still have any trouble write few words [here](https://github.com/grinux/sunxi-jtag/issues)
 
 GPL-2.0 license inherited from U-Boot. Checkout [this](https://github.com/ARM-software/u-boot/blob/402465214395ed26d6fa72d9b6097c7adbf6a966/Licenses/README#L11) statement about using in proprietary projects. 
