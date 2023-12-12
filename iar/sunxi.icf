@@ -2,11 +2,51 @@
 /*-Editor annotation file-*/
 /* IcfEditorFile="$TOOLKIT_DIR$\config\ide\IcfEditor\a_v1_1.xml" */
 /*-Specials-*/
-define symbol __ICFEDIT_intvec_start__ = 0x00000000;
-define symbol __ICFEDIT_INIT_DONE___         = 0x40;
-/*-Memory Regions-*/
-define symbol __ICFEDIT_region_IROM1_start__ = 0x00000000;
-define symbol __ICFEDIT_region_IROM1_end__   = 0x0005FFF;
+if (isdefinedsymbol(DDR))
+{
+  /* 128Mb code */
+  define symbol __ICFEDIT_region_IROM1_start__ = 0x40000000;
+  define symbol __ICFEDIT_region_IROM1_end__   = 0x47FFFFFF; 
+  /* 128Mb data */
+  define symbol __ICFEDIT_region_IRAM1_start__ = 0x48000000;
+  define symbol __ICFEDIT_region_IRAM1_end__   = 0x50000000;
+}
+else 
+{
+  if (isdefinedsymbol(SOC_ID))
+  {
+    if (SOC_ID == 5)
+    
+    {
+      /* 32Kb ROM */
+      define symbol __ICFEDIT_region_IROM1_start__ = 0x00010000;
+      define symbol __ICFEDIT_region_IROM1_end__   = 0x00017FFF;
+      /* 112Kb RAM */
+      define symbol __ICFEDIT_region_IRAM1_start__ = 0x00018000;
+      define symbol __ICFEDIT_region_IRAM1_end__   = 0x00033FFF;
+    }
+    else if (SOC_ID == 616)
+    {
+      /* 32Kb ROM */
+      define symbol __ICFEDIT_region_IROM1_start__ = 0x00020000;
+      define symbol __ICFEDIT_region_IROM1_end__   = 0x00027FFF;
+      /* 128Kb RAM */
+      define symbol __ICFEDIT_region_IRAM1_start__ = 0x00028000;
+      define symbol __ICFEDIT_region_IRAM1_end__   = 0x00057FFF;  
+    }
+  }
+  else /*V3s, H3 SRAM*/
+  {
+    /*-Memory Regions-*/
+    define symbol __ICFEDIT_region_IROM1_start__ = 0x00000000;
+    define symbol __ICFEDIT_region_IROM1_end__   = 0x0005FFF;
+    define symbol __ICFEDIT_region_IRAM1_start__ = 0x0006000;
+    define symbol __ICFEDIT_region_IRAM1_end__   = 0x000EFFF;
+  }
+}
+
+define symbol __ICFEDIT_intvec_start__ = __ICFEDIT_region_IROM1_start__ + 0x0;
+
 define symbol __ICFEDIT_region_IROM2_start__ = 0x0;
 define symbol __ICFEDIT_region_IROM2_end__   = 0x0;
 define symbol __ICFEDIT_region_EROM1_start__ = 0x0;
@@ -14,9 +54,7 @@ define symbol __ICFEDIT_region_EROM1_end__   = 0x0;
 define symbol __ICFEDIT_region_EROM2_start__ = 0x0;
 define symbol __ICFEDIT_region_EROM2_end__   = 0x0;
 define symbol __ICFEDIT_region_EROM3_start__ = 0x0;
-define symbol __ICFEDIT_region_EROM3_end__   = 0x0;
-define symbol __ICFEDIT_region_IRAM1_start__ = 0x0006000;
-define symbol __ICFEDIT_region_IRAM1_end__   = 0x000EFFF;
+define symbol __ICFEDIT_region_EROM3_end__   = 0x0; 
 define symbol __ICFEDIT_region_IRAM2_start__ = 0x0;
 define symbol __ICFEDIT_region_IRAM2_end__   = 0x0;
 define symbol __ICFEDIT_region_ERAM1_start__ = 0x0;
@@ -25,6 +63,7 @@ define symbol __ICFEDIT_region_ERAM2_start__ = 0x0;
 define symbol __ICFEDIT_region_ERAM2_end__   = 0x0;
 define symbol __ICFEDIT_region_ERAM3_start__ = 0x0;
 define symbol __ICFEDIT_region_ERAM3_end__   = 0x0;
+
 /*-Sizes-*/
 define symbol __ICFEDIT_size_cstack__   = 0x2000;
 define symbol __ICFEDIT_size_svcstack__ = 0x100;
@@ -34,6 +73,8 @@ define symbol __ICFEDIT_size_undstack__ = 0x100;
 define symbol __ICFEDIT_size_abtstack__ = 0x100;
 define symbol __ICFEDIT_size_heap__     = 0x8000;
 /**** End of ICF editor section. ###ICF###*/
+
+define symbol __DRAM_INIT_DONE__         = __ICFEDIT_region_IROM1_start__ + 0x40;
 
 define memory mem with size = 4G;
 define region IROM_region   =   mem:[from __ICFEDIT_region_IROM1_start__ to __ICFEDIT_region_IROM1_end__]
@@ -64,7 +105,7 @@ if (isdefinedsymbol(__USE_DLIB_PERTHREAD))
 }
 
 place at address mem:__ICFEDIT_intvec_start__ { readonly section .intvec };
-place at address mem:__ICFEDIT_INIT_DONE___ {section DRAM_INIT_DONE};
+place at address mem:__DRAM_INIT_DONE__ {section DRAM_INIT_DONE};
 
 place in IROM_region  { readonly };
 place in EROM_region  { readonly section application_specific_ro };

@@ -54,9 +54,16 @@
 #define __kernel_size_t unsigned int
 #define ssize_t u32
 #define uintptr_t unsigned int *
+
+#if CONFIG_ARM64
+#define phys_addr_t unsigned long long
+#define phys_size_t unsigned long long
+#define dma_addr_t unsigned long long
+#else
 #define phys_addr_t unsigned int
 #define phys_size_t unsigned int
 #define dma_addr_t unsigned int
+#endif
 
 #define u8 unsigned char
 #define u16 unsigned short int
@@ -276,7 +283,7 @@ ENVL_NAND, ENVL_SPI_FLASH};
 #define dectoul(...)                    (0)
 #define spl_in_proper()                 (0)
 #define mmc_get_blk_desc(...)           ((struct blk_desc *)0)
-#if SOC_ID_V3S || SOC_ID_H3
+#if SOC_ID_V3S || SOC_ID_H3 || SOC_ID_H5
 #define clock_set_pll11(...)            __no_operation()
 #endif            
 
@@ -294,6 +301,7 @@ ENVL_NAND, ENVL_SPI_FLASH};
 
 /* mock for main global u-boot structure with somme additional fields */
 __weak struct gd {
+        u64 ram_top;
         u32 flags;
         u32 baudrate;
         u8 have_console;

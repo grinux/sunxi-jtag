@@ -451,8 +451,8 @@ __param SUN8I_H5_DX_WRITE_DELAYS =
 	"1,2,3,4,3,4,4,4,6,6,6;" + "6,6,6,5,5,5,5,5,6,6,6;" +
 	"0,2,4,2,6,5,5,5,6,6,6;" + "3,3,3,2,2,1,1,1,4,4,4";
 
-__param SUN8I_H5_AC_DELAYS = "0,0,5,5,0,0,0,0" + "0,0,0,0,3,3,3,3" +
-			     "3,3,3,3,3,3,3,3" + "3,3,3,3,2,0,0";
+__param SUN8I_H5_AC_DELAYS = "0,0,5,5,0,0,0,0," + "0,0,0,0,3,3,3,3," +
+			     "3,3,3,3,3,3,3,3," + "3,3,3,3,2,0,0";
 
 sunxi_check_mac_param()
 {
@@ -622,7 +622,7 @@ sunxi_is_soc_valid(socid)
 sunxi_panic(str)
 {
 	__messageBoxYesCancel("In sunxi.mac:\n\n" + str, "Error");
-	__abortLaunch("Error: " + __toLower(str) + "\n       Exiting....");
+	__abortLaunch("Error: " + str + "\n       Exiting....");
 }
 
 read(addr, name)
@@ -644,11 +644,14 @@ write(addr, val, name)
 	return __readMemory32(addr, "Memory");
 }
 
-waitbits(addr, mask)
+waitbits(addr, mask, to)
 {
-	__var val;
-	while (!((val = read(addr, "")) & mask))
-		;
+	__var tmo, val;
+        tmo = __wallTime_ms() + to;
+	while (!((val = read(addr, "")) & mask)) {
+		if (__wallTime_ms() > tmo)
+			return 0;
+        }                
 	return val;
 }
 
@@ -1859,7 +1862,7 @@ mctl_channel_init_dw()
 	} else if (socid == "A64" || socid == "H5") {
 		/* dphy & aphy phase select ? */
 		modify(mctl_ctl__pgcr2, (0x3 << 10) | (0x3 << 8),
-		       (0x0 << 10) | (0x3 << 8), mctl_ctl__ > pgcr[2]);
+		       (0x0 << 10) | (0x3 << 8), "mctl_ctl->pgcr[2]");
 	} else if (socid == "R40") {
 		/* dx ddr_clk & hdr_clk dynamic mode (tpr13[9] == 0) */
 		clrbits(mctl_ctl__pgcr0, (0x3 << 14) | (0x3 << 12),
@@ -2121,32 +2124,27 @@ dsb()
 	/* DSB */
 	__writeMemory32(0xf57ff04f, CONFIG_SYS_SRAM_BASE, "Memory");
 
-	/* MOV r0, #0xab */
+	/* MOV r0, #0xAB */
 	__writeMemory32(0xe3a000ab, CONFIG_SYS_SRAM_BASE + 4, "Memory");
 
-	/* MOV r1, #0 */
-	__writeMemory32(0xe3a01000, CONFIG_SYS_SRAM_BASE + 8, "Memory");
-
-	/* STR r0, [r1] */
-	__writeMemory32(0xe5810000, CONFIG_SYS_SRAM_BASE + 12, "Memory");
-
-	if (__readMemory32(0, "Memory") != 0xf57ff04f ||
-	    __readMemory32(4, "Memory") != 0xe3a000ab ||
-	    __readMemory32(8, "Memory") != 0xe3a01000 ||
-	    __readMemory32(12, "Memory") != 0xe5810000)
-		sunxi_panic(__smessage "DSB fail! Memory check error\n" +
-				    "Check CONFIG_SYS_SRAM_BASE = ",
-			    CONFIG_SYS_SRAM_BASE, " value\n" + "Exiting...");
-	PC = 0;
-	__hwRunToBreakpoint(16, 1000);
-	val = __readMemory32(0, "Memory");
-	if (val != 0xAB)
+	if (__readMemory32(CONFIG_SYS_SRAM_BASE, "Memory") != 0xf57ff04f ||
+	    __readMemory32(CONFIG_SYS_SRAM_BASE + 4, "Memory") != 0xe3a000ab)
+		sunxi_panic(__smessage "DSB fail! Pre DSB check error\n" +
+				    "   CONFIG_SYS_SRAM_BASE = 0x",
+                            CONFIG_SYS_SRAM_BASE:%x, "\n   0x",
+                            CONFIG_SYS_SRAM_BASE:%x, " = 0x", 
+                            __readMemory32(CONFIG_SYS_SRAM_BASE, "Memory"):%x, "\n   0x",
+                            (CONFIG_SYS_SRAM_BASE + 4):%x, " = 0x", 
+                            __readMemory32(CONFIG_SYS_SRAM_BASE + 4, "Memory"):%x);
+	PC = CONFIG_SYS_SRAM_BASE;
+	__hwRunToBreakpoint(CONFIG_SYS_SRAM_BASE + 8, 1000);
+	if (R0 != 0xAB)
 		sunxi_panic(__smessage
-				    "DSB fail! Post DSB memory check error\n" +
-				    "         expected: 0xAB\n" +
-				    "           readed: ",
-			    val, "\n" + "        CONFIG_SYS_SRAM_BASE: ",
-			    CONFIG_SYS_SRAM_BASE, "\n" + "Exiting...");
+				    "DSB fail! Post DSB check error\n" +
+                                    "   CONFIG_SYS_SRAM_BASE = 0x",
+                                    CONFIG_SYS_SRAM_BASE:%x, "\n" + 
+                                    "   expected: R0 = 0xab\n" +
+				    "   readed: R0 = 0x", R0:%x);
 }
 
 /*
@@ -2440,7 +2438,8 @@ clock_set_pll1(clock)
 	      "ccm->pll1_cfg");
 	if (DEBUG_ALL())
 		__message "waiting pll1 lock";
-	val = waitbits(ccm__pll1_cfg, CCM_PLL1_CTRL_LOCK);
+	if (!(val = waitbits(ccm__pll1_cfg, CCM_PLL1_CTRL_LOCK, 1000)))
+                sunxi_panic("Timeout locking PLL1");
 	if (DEBUG_ALL())
 		__message "pll1 locked, readed back value is 0x", val : % x;
 
@@ -2491,23 +2490,24 @@ clock_init_safe()
 			"prcm->pll_ctrl1");
 	}
 
-	if (socid == "R40" || sunxi == "SUN50I")
+	if (socid == "R40" || (sunxi == "SUN50I" && socid != "H5"))
 		write(ccm__pll_lock_ctrl, GENMASK(12, 0), "ccm->pll_lock_ctrl");
 
 	clock_set_pll1(408000000);
 	write(ccm__pll6_cfg, PLL6_CFG_DEFAULT, "ccm->pll6_cfg");
 	if (DEBUG_ALL())
 		__message "waiting pll6 lock";
-	val = waitbits(ccm__pll6_cfg, CCM_PLL6_CTRL_LOCK);
+	if (!(val = waitbits(ccm__pll6_cfg, CCM_PLL6_CTRL_LOCK, 1000)))
+                sunxi_panic("Timeout locking PLL6");
 	if (DEBUG_ALL())
 		__message "pll6 locked, readed back value is 0x", val : % x;
 	write(ccm__ahb1_apb1_div, AHB1_ABP1_DIV_DEFAULT, "ccm->ahb1_apb1_div");
 
 	if (sunxi != "SUNIV") {
-		if (sunxi == "SUN50I")
+		if (sunxi == "SUN50I" && socid != "H5")
 			write(ccm__mbus0_clk_cfg, MBUS_CLK_DEFAULT_SUN50I,
 			      "ccm->mbus0_clk_cfg");
-		else if (sunxi == "SUN8I")
+		else if (sunxi == "SUN8I" || socid == "H5")
 			write(ccm__mbus0_clk_cfg, MBUS_CLK_DEFAULT_SUN8I,
 			      "ccm->mbus0_clk_cfg");
 		else
@@ -2538,7 +2538,7 @@ clock_init_sec()
 {
 	if (socid == "H3" || socid == "H5") {
 		if (DEBUG_CALLS())
-			__message "clock_init_sec() start";
+			__message "clock_init_sec()";
 		setbits(ccm__ccu_sec_switch,
 			CCM_SEC_SWITCH_MBUS_NONSEC | CCM_SEC_SWITCH_BUS_NONSEC |
 				CCM_SEC_SWITCH_PLL_NONSEC,
@@ -2548,7 +2548,5 @@ clock_init_sec()
 				PRCM_SEC_SWITCH_PLL_CFG_NONSEC |
 				PRCM_SEC_SWITCH_PWR_GATE_NONSEC,
 			"prcm->prcm_sec_switch");
-		if (DEBUG_CALLS())
-			__message "clock_init_sec() end";
 	}
 }
