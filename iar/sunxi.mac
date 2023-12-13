@@ -25,7 +25,7 @@
   */
 
 __param socid = "";
-__param init_mode = "mac";
+__param init_mode = "";
 
 __param CONFIG_SUNXI_AHCI = 0;
 __param CONFIG_SYS_CLK_FREQ = 0;
@@ -528,7 +528,7 @@ execUserPreload()
 				    "--macro_param init_mode=<(\"mac\"|\"bin\")>\n" +
 				    "in \"Project->Options->Debugger->Extra Options\"\n\n" +
 				    "Binary mode needs to build desired dram-init " +
-				    "configuration to generate *.hex file",
+				    "configuration to generate sunXX-YY-dram-init.hex file",
 			    ""))
 			init_mode = "mac";
 		else
@@ -554,6 +554,7 @@ execUserPreload()
 					    "-dram-init.hex not found");
 		}
 		__closeFile(rc);
+                /* hex file contains correct offset*/
 		if (__memoryRestore("Memory", full_path, 0))
 			sunxi_panic("Binary " + __toLower(sunxi) + "-" +
 				    __toLower(socid) +
@@ -567,8 +568,8 @@ execUserPreload()
          * 
          */
 		CPSR = 0x1d3;
-		PC = 0;
-		rc = (int)__hwRunToBreakpoint(0x40, 1000);
+		PC = CONFIG_SYS_SRAM_BASE;
+		rc = (int)__hwRunToBreakpoint(CONFIG_SYS_SRAM_BASE + 0x40, 10000);
 		if (rc == -1)
 			sunxi_panic(__smessage "Binary executing error:\n\n" +
 				    "Failed to set breakpoint");
