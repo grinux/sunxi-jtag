@@ -1,0 +1,1 @@
+#include <asm/arch-sunxi/prcm_sun50i.h>

@@ -1,0 +1,1 @@
+#include <asm/arch-sunxi/dram_sun50i_h616.h>

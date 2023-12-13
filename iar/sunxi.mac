@@ -148,7 +148,7 @@ __param CCM_DRAMCLK_CFG_RST = (0x1 << 31);
 
 CCM_PLL5_TUN_LOCK_TIME(x)
 {
-	return ((x)&0x7) << 24;
+	return ((x) & 0x7) << 24;
 }
 
 CCM_PLL5_TUN_LOCK_TIME_MASK()
@@ -158,7 +158,7 @@ CCM_PLL5_TUN_LOCK_TIME_MASK()
 
 CCM_PLL5_TUN_INIT_FREQ(x)
 {
-	return ((x)&0x7f) << 16;
+	return ((x) & 0x7f) << 16;
 }
 
 CCM_PLL5_TUN_INIT_FREQ_MASK()
@@ -193,7 +193,7 @@ CCM_PLL5_CTRL_N(n)
 
 CCM_PLL1_CTRL_P(n)
 {
-	return ((n)&0x3) << 16;
+	return ((n) & 0x3) << 16;
 }
 
 CCM_PLL1_CTRL_N(n)
@@ -489,8 +489,8 @@ sunxi_check_mac_param()
 		wlist += "CONFIG_SUNXI_DRAM_DW_32BIT = 1\n" +
 			 "CONFIG_SUNXI_DRAM_DW_16BIT = 1\n";
 	}
-        if (socid == "V3s" && CONFIG_DRAM_ODT_EN == 1)
-          		wlist += "socid = V3s\nCONFIG_DRAM_ODT_EN = 1\n";
+	if (socid == "V3s" && CONFIG_DRAM_ODT_EN == 1)
+		wlist += "socid = V3s\nCONFIG_DRAM_ODT_EN = 1\n";
 	__var flg;
 	flg = 0;
 	if (CONFIG_SUNXI_DRAM_DDR3_1333 &&
@@ -520,6 +520,16 @@ sunxi_check_mac_param()
 execUserPreload()
 {
 	__message "Going to configuire Allwinner ", socid;
+        if (socid == "H616") { /*have major differences so mac unimplemented */
+                if (init_mode == "mac") {
+                        if (!(__messageBoxYesNo((__smessage
+                                     "mac mode unemplemented for ", socid, "\n" +
+                                     "Continue using bin mode?"), "Error")))
+                                sunxi_panic(__smessage
+                                            "mac mode unemplemented for ", socid);
+                }
+                init_mode = "bin";
+        }
 	if (init_mode == "") {
 		if (__messageBoxYesNo(
 			    "Press Yes to init DRAM using mac\n" +
@@ -554,13 +564,13 @@ execUserPreload()
 					    "-dram-init.hex not found");
 		}
 		__closeFile(rc);
-                /* hex file contains correct offset*/
+		/* hex file contains correct offset*/
 		if (__memoryRestore("Memory", full_path, 0))
 			sunxi_panic("Binary " + __toLower(sunxi) + "-" +
 				    __toLower(socid) +
 				    "-dram-init.hex loading error");
 		__message "Executing binary...";
-	/* if we zero-fill regs the macro engine marks them as cached and after
+		/* if we zero-fill regs the macro engine marks them as cached and after
          * executing blob it does not do rereading regs as J-Link log says.
          * PC reading still 0 too! 
          *  
@@ -569,7 +579,8 @@ execUserPreload()
          */
 		CPSR = 0x1d3;
 		PC = CONFIG_SYS_SRAM_BASE;
-		rc = (int)__hwRunToBreakpoint(CONFIG_SYS_SRAM_BASE + 0x40, 10000);
+		rc = (int)__hwRunToBreakpoint(CONFIG_SYS_SRAM_BASE + 0x40,
+					      10000);
 		if (rc == -1)
 			sunxi_panic(__smessage "Binary executing error:\n\n" +
 				    "Failed to set breakpoint");
@@ -613,7 +624,7 @@ sunxi_is_soc_valid(socid)
 {
 	if (socid == "V3s" || socid == "H3" || socid == "R40")
 		sunxi = "SUN8I";
-	else if (socid == "H5" || socid == "A63")
+	else if (socid == "H5" || socid == "A63" || socid == "H616")
 		sunxi = "SUN50I";
 	else /* SUN6I SUNIV unemplemented */
 		return 0;
@@ -632,7 +643,7 @@ read(addr, name)
 	val = __readMemory32(addr, "Memory");
 	if (DEBUG_IO())
 		/*__message "         R  ", name, ": 0x", val:%x;*/
-		__message "R32: ", addr : % x, "=", val : % x;
+		__message "R32: ", addr :%x, "=", val :%x;
 	return val;
 }
 
@@ -640,7 +651,7 @@ write(addr, val, name)
 {
 	if (DEBUG_IO())
 		/*__message "         W ", name, ": 0x", val:%x;*/
-		__message "W32: ", addr : % x, "=", val : % x;
+		__message "W32: ", addr :%x, "=", val :%x;
 	__writeMemory32(val, addr, "Memory");
 	return __readMemory32(addr, "Memory");
 }
@@ -648,11 +659,11 @@ write(addr, val, name)
 waitbits(addr, mask, to)
 {
 	__var tmo, val;
-        tmo = __wallTime_ms() + to;
+	tmo = __wallTime_ms() + to;
 	while (!((val = read(addr, "")) & mask)) {
 		if (__wallTime_ms() > tmo)
 			return 0;
-        }                
+	}
 	return val;
 }
 
@@ -1253,8 +1264,8 @@ mbus_configure_port(port, bwlimit, priority,
 	cfg1 = (bwl2 << 16) | (bwl1 & 0xffff);
 
 	if (DEBUG_ALL())
-		__message "MBUS port ", port : % d, " cfg0 ", cfg0 : % x,
-			" cfg1 ", cfg1 : % x;
+		__message "MBUS port ", port :%d, " cfg0 ", cfg0 :%x,
+			" cfg1 ", cfg1 :%x;
 
 	write(mctl_com__mcr + (mctl_com__bwcr - mctl_com__mcr) / 16 * port,
 	      cfg0, __smessage "mctl_com->mcr[", port, "][0]");
@@ -1537,7 +1548,7 @@ get_str_array_val(array, base, col_idx, val_idx)
 	if (col_idx < 0 || val_idx < 0 || !sizeof(array) ||
 	    (base != 10 && base != 16))
 		sunxi_panic(
-			"get_str_array_val() arguments mismatch\n Exiting...");
+			"get_str_array_val() arguments mismatch");
 
 	/* extrat collection(set) of values string by set index */
 	end = -1;
@@ -1550,7 +1561,7 @@ get_str_array_val(array, base, col_idx, val_idx)
 					"Array collection index is out of range:\n",
 					"         requested: ", col_idx, "\n",
 					"         available: ", i, "\n",
-					"Check string array format\n Exiting...");
+					"Check string array format");
 			end = sizeof(array);
 		}
 	}
@@ -1573,7 +1584,7 @@ get_str_array_val(array, base, col_idx, val_idx)
 					val_idx, "\n",
 					"         value index available: ", i,
 					"\n",
-					"Check string array format\n Exiting...");
+					"Check string array format");
 			end = sizeof(set);
 		}
 	}
@@ -1582,10 +1593,10 @@ get_str_array_val(array, base, col_idx, val_idx)
 	if (DEBUG_ALL()) {
 		if (base == 10)
 			__message "Array val_idx = ", val_idx,
-				", val = ", val : % d;
+				", val = ", val :%d;
 		else
 			__message "Array val_idx = ", val_idx, ", val = 0x",
-				val : % x;
+				val :%x;
 	}
 	return val;
 }
@@ -1630,7 +1641,7 @@ mctl_set_bit_delays_dw()
 mctl_phy_init_dw(val)
 {
 	if (DEBUG_CALLS())
-		__message "mctl_phy_init_dw(0x", val : % x, ")";
+		__message "mctl_phy_init_dw(0x", val :%x, ")";
 
 	write(mctl_ctl__pir, val | PIR_INIT, "mctl_ctl->pir");
 	waitval(mctl_ctl__pgsr0, PGSR_INIT_DONE, 0x1, 1000);
@@ -1661,7 +1672,7 @@ mctl_v3s_zq_calibration_quirk_dw()
 bin_to_mgray(val)
 {
 	if (DEBUG_CALLS())
-		__message "bin_to_mgray(0x", val : % x, ")";
+		__message "bin_to_mgray(0x", val :%x, ")";
 
 	__var lookup_table32;
 	lookup_table32 = "00,01,02,03,06,07,04,05," +
@@ -1674,7 +1685,7 @@ bin_to_mgray(val)
 mgray_to_bin(val)
 {
 	if (DEBUG_CALLS())
-		__message "mgray_to_bin(0x", val : % x, ")";
+		__message "mgray_to_bin(0x", val :%x, ")";
 
 	__var lookup_table32;
 	lookup_table32 = "00,01,02,03,06,07,04,05," +
@@ -2061,7 +2072,7 @@ mctl_set_cr_dw()
 mctl_calc_rank_size_dw(rank)
 {
 	if (DEBUG_CALLS())
-		__message "mctl_calc_rank_size_dw(", rank : % d, ")";
+		__message "mctl_calc_rank_size_dw(", rank :%d, ")";
 	if (rank == 0)
 		return (1 << (row_bits0 + bank_bits0)) * page_size0;
 	else
@@ -2106,7 +2117,7 @@ dsb()
 {
 	if (DEBUG_CALLS())
 		__message "dsb()";
-  /*
+	/*
    * DMB - whenever a memory access requires ordering with regards to another 
    * memory access.
    * DSB - whenever a memory access needs to have completed before program 
@@ -2132,20 +2143,22 @@ dsb()
 	    __readMemory32(CONFIG_SYS_SRAM_BASE + 4, "Memory") != 0xe3a000ab)
 		sunxi_panic(__smessage "DSB fail! Pre DSB check error\n" +
 				    "   CONFIG_SYS_SRAM_BASE = 0x",
-                            CONFIG_SYS_SRAM_BASE:%x, "\n   0x",
-                            CONFIG_SYS_SRAM_BASE:%x, " = 0x", 
-                            __readMemory32(CONFIG_SYS_SRAM_BASE, "Memory"):%x, "\n   0x",
-                            (CONFIG_SYS_SRAM_BASE + 4):%x, " = 0x", 
-                            __readMemory32(CONFIG_SYS_SRAM_BASE + 4, "Memory"):%x);
+			    CONFIG_SYS_SRAM_BASE:%x, 
+			    "\n   0x", CONFIG_SYS_SRAM_BASE:%x, " = 0x",
+			      __readMemory32(CONFIG_SYS_SRAM_BASE, "Memory"):%x, 
+			    "\n   0x", (CONFIG_SYS_SRAM_BASE + 4):%x, 
+			    " = 0x",
+			      __readMemory32(CONFIG_SYS_SRAM_BASE + 4, "Memory")
+			    :%x);
 	PC = CONFIG_SYS_SRAM_BASE;
 	__hwRunToBreakpoint(CONFIG_SYS_SRAM_BASE + 8, 1000);
 	if (R0 != 0xAB)
-		sunxi_panic(__smessage
-				    "DSB fail! Post DSB check error\n" +
-                                    "   CONFIG_SYS_SRAM_BASE = 0x",
-                                    CONFIG_SYS_SRAM_BASE:%x, "\n" + 
-                                    "   expected: R0 = 0xab\n" +
-				    "   readed: R0 = 0x", R0:%x);
+		sunxi_panic(__smessage "DSB fail! Post DSB check error\n" +
+				    "   CONFIG_SYS_SRAM_BASE = 0x",
+			    CONFIG_SYS_SRAM_BASE:%x,
+			      "\n" + "   expected: R0 = 0xab\n" +
+				      "   readed: R0 = 0x",
+			      R0:%x);
 }
 
 /*
@@ -2154,8 +2167,8 @@ dsb()
 mctl_mem_matches_base_dw(offset, base)
 {
 	if (DEBUG_CALLS())
-		__message "mctl_mem_matches_base_dw(0x", offset : % x, ", 0x",
-			base : % x, ")";
+		__message "mctl_mem_matches_base_dw(0x", offset :%x, ", 0x",
+			base :%x, ")";
 
 	/* Try to write different values to RAM at two addresses */
 	write(base, 0, "base");
@@ -2168,7 +2181,7 @@ mctl_mem_matches_base_dw(offset, base)
 mctl_auto_detect_dram_size_rank0_dw(base)
 {
 	if (DEBUG_CALLS())
-		__message "mctl_auto_detect_dram_size_rank0_dw(0x", base : % x,
+		__message "mctl_auto_detect_dram_size_rank0_dw(0x", base :%x,
 			")";
 
 	__var break;
@@ -2213,7 +2226,7 @@ mctl_auto_detect_dram_size_rank0_dw(base)
 mctl_auto_detect_dram_size_rank1_dw(base)
 {
 	if (DEBUG_CALLS())
-		__message "mctl_auto_detect_dram_size_rank1_dw(", base : % x,
+		__message "mctl_auto_detect_dram_size_rank1_dw(", base :%x,
 			")";
 
 	__var break;
@@ -2440,9 +2453,9 @@ clock_set_pll1(clock)
 	if (DEBUG_ALL())
 		__message "waiting pll1 lock";
 	if (!(val = waitbits(ccm__pll1_cfg, CCM_PLL1_CTRL_LOCK, 1000)))
-                sunxi_panic("Timeout locking PLL1");
+		sunxi_panic("Timeout locking PLL1");
 	if (DEBUG_ALL())
-		__message "pll1 locked, readed back value is 0x", val : % x;
+		__message "pll1 locked, readed back value is 0x", val :%x;
 
 	/* Switch CPU to PLL1 */
 	if (DEBUG_ALL())
@@ -2499,9 +2512,9 @@ clock_init_safe()
 	if (DEBUG_ALL())
 		__message "waiting pll6 lock";
 	if (!(val = waitbits(ccm__pll6_cfg, CCM_PLL6_CTRL_LOCK, 1000)))
-                sunxi_panic("Timeout locking PLL6");
+		sunxi_panic("Timeout locking PLL6");
 	if (DEBUG_ALL())
-		__message "pll6 locked, readed back value is 0x", val : % x;
+		__message "pll6 locked, readed back value is 0x", val :%x;
 	write(ccm__ahb1_apb1_div, AHB1_ABP1_DIV_DEFAULT, "ccm->ahb1_apb1_div");
 
 	if (sunxi != "SUNIV") {

@@ -4,8 +4,8 @@
 - [x] V3s (Lichee Pi Zero)
 - [x] H3 (Orange Pi PC)
 - [x] H5 (Orange Pi PC2)
+- [x] H616 (Orange Pi Zero2)
 - [ ] H6 (Orange Pi One Plus)
-- [ ] H616 (Orange Pi Zero2)
 - [ ] T113-S3 (MangoPi MQ-R)
 - [ ] R40/A40/V40 (Banana Pi BPI-M2 Berry)
 

@@ -1,0 +1,1 @@
+#include <asm/arch-sunxi/cpu_sun50i_h6.h>

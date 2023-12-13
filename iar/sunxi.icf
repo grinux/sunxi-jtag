@@ -27,21 +27,22 @@ else
     }
     else if (SOC_ID == 616)
     {
-      /* 32Kb ROM */
+      /* 36Kb ROM */
       define symbol __ICFEDIT_region_IROM1_start__ = 0x00020000;
-      define symbol __ICFEDIT_region_IROM1_end__   = 0x00027FFF;
-      /* 128Kb RAM */
-      define symbol __ICFEDIT_region_IRAM1_start__ = 0x00028000;
+      define symbol __ICFEDIT_region_IROM1_end__   = 0x00028FFF;
+      /* 192Kb RAM */
+      define symbol __ICFEDIT_region_IRAM1_start__ = 0x00029000;
       define symbol __ICFEDIT_region_IRAM1_end__   = 0x00057FFF;  
     }
   }
   else /*V3s, H3 SRAM*/
   {
-    /*-Memory Regions-*/
+    /* 28Kb ROM */
     define symbol __ICFEDIT_region_IROM1_start__ = 0x00000000;
-    define symbol __ICFEDIT_region_IROM1_end__   = 0x0005FFF;
-    define symbol __ICFEDIT_region_IRAM1_start__ = 0x0006000;
-    define symbol __ICFEDIT_region_IRAM1_end__   = 0x000EFFF;
+    define symbol __ICFEDIT_region_IROM1_end__   = 0x00006FFF;
+    /* 32Kb RAM */
+    define symbol __ICFEDIT_region_IRAM1_start__ = 0x00007000;
+    define symbol __ICFEDIT_region_IRAM1_end__   = 0x0000EFFF;
   }
 }
 

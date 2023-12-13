@@ -142,7 +142,9 @@
 #define readw(c)	({ u16 __v = __arch_getw(c); __iormb(); printf ("R16: %x=%x\n", c, __v); __v; })
 #define readl(c)	({ u32 __v = __arch_getl(c); __iormb(); printf ("R32: %x=%x\n", c, __v); __v; })
 #define readlw(c)	({ u32 __v = __arch_getl(c); __iormb();/* printf ("WAI: %x=%x\n", c, __v);*/ __v; })
-     
+
+#define readl_relaxed(c)	({ u32 __v = __arch_getl(c); printf ("R32: %x=%x\n", c, __v); __v; })
+#define writel_relaxed(v,c)	({ printf ("W32: %x=%x\n", c, v); u32 __v = v; __arch_putl(__v,c); __v; })
 #else                
 #define __raw_writeb(v,a)	__arch_putb(v,a)
 #define __raw_writew(v,a)	__arch_putw(v,a)
@@ -160,7 +162,10 @@
 #define readw(c)	({ u16 __v = __arch_getw(c); __iormb(); __v; })
 #define readl(c)	({ u32 __v = __arch_getl(c); __iormb(); __v; })
 
-#endif /* _DEBUG_H_ */                
+#define readl_relaxed(c)	({ u32 __v = __arch_getl(c); __v; })
+#define writel_relaxed(v,c)	({ u32 __v = v; __arch_putl(__v,c); __v; })
+
+#endif /* CFG_SYS_INIT_DEBUG && CFG_SYS_DEBUG_IO */
                 
 #define out_arch(type,endian,a,v)	__raw_write##type(cpu_to_##endian(v),a)
 #define in_arch(type,endian,a)		endian##_to_cpu(__raw_read##type(a))
@@ -209,6 +214,8 @@
 	_max1 > _max2 ? _max1 : _max2; })
 
 #define clamp(val, lo, hi) min((typeof(val))max(val, lo), hi)
+
+#define check_member(...)
 
 #define DIV_ROUND_CLOSEST(x, divisor)(			\
 {							\
@@ -307,7 +314,7 @@ __weak struct gd {
         u8 have_console;
         u8 cb[0x1000];
         u32 cb_size;        
-        u32 ram_size;
+        u64 ram_size;
         void const * fdt_blob;
         struct {
                 u32 bi_boot_params;
@@ -323,6 +330,7 @@ __weak struct gd {
 void sdelay(unsigned long loops);
 void __udelay(unsigned long usec);
 unsigned long long get_ticks(void);
+uint sunxi_get_sram_id(void);
 int timer_init(void);
 
 #endif

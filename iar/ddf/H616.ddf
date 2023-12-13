@@ -1,0 +1,21 @@
+
+;; Memory information ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Used to define address zones within the ARM address space (Memory).
+;;
+;;   Name      may be almost anything
+;;   AdrSpace  must be Memory
+;;   StartAdr  start of memory block
+;;   EndAdr    end of memory block
+;;   AccType   type of access, read-only (R), read-write (RW) or SFR (W)
+
+[Memory]
+;;         Name             AdrSpace    StartAdr    EndAdr      AccType   Width
+Memory =  SRAM_A1          Memory      0x00020000  0x00027FFF  RW 
+Memory =  SRAM_C           Memory      0x00028000  0x00057FFF  RW  
+Memory =  SFR              Memory      0x01000000  0x09020FFF  W     
+Memory =  DRAM             Memory      0x40000000  0xBfffffff  RW  
+Memory =  BROM             Memory      0x00000000  0x0000FFFF  R
+
+[SfrInclude]
+File = ..\..\svd\H616.svd
