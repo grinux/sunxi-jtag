@@ -15,6 +15,9 @@
 #elif SOC_ID_H5
 #include <configs\H5.h>
 
+#elif SOC_ID_H6
+#include <configs\H6.h>
+
 #elif SOC_ID_H616
 #include <configs\H616.h>
 

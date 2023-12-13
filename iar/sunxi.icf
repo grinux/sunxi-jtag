@@ -4,12 +4,12 @@
 /*-Specials-*/
 if (isdefinedsymbol(DDR))
 {
-  /* 128Mb code */
+  /* 32Mb code */
   define symbol __ICFEDIT_region_IROM1_start__ = 0x40000000;
-  define symbol __ICFEDIT_region_IROM1_end__   = 0x47FFFFFF; 
-  /* 128Mb data */
-  define symbol __ICFEDIT_region_IRAM1_start__ = 0x48000000;
-  define symbol __ICFEDIT_region_IRAM1_end__   = 0x50000000;
+  define symbol __ICFEDIT_region_IROM1_end__   = 0x41F3FFFF;
+  /* 32Mb data */
+  define symbol __ICFEDIT_region_IRAM1_start__ = 0x41F40000;
+  define symbol __ICFEDIT_region_IRAM1_end__   = 0x43E80000;
 }
 else 
 {
@@ -25,7 +25,7 @@ else
       define symbol __ICFEDIT_region_IRAM1_start__ = 0x00018000;
       define symbol __ICFEDIT_region_IRAM1_end__   = 0x00033FFF;
     }
-    else if (SOC_ID == 616)
+    else if (SOC_ID == 616 || SOC_ID == 6)
     {
       /* 36Kb ROM */
       define symbol __ICFEDIT_region_IROM1_start__ = 0x00020000;

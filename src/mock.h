@@ -98,6 +98,12 @@
 #define true 1
 
 /* used marco */
+
+#define BITS_PER_LONG 32
+
+#define GENMASK(h, l) \
+	(((~0UL) << (l)) & (~0UL >> (BITS_PER_LONG - 1 - (h))))
+
 #define BITS_PER_BYTE 8
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 

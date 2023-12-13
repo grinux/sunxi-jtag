@@ -520,7 +520,8 @@ sunxi_check_mac_param()
 execUserPreload()
 {
 	__message "Going to configuire Allwinner ", socid;
-        if (socid == "H616") { /*have major differences so mac unimplemented */
+        if (socid == "H616" || socid == "H6") {
+                /*have major differences so mac unimplemented */
                 if (init_mode == "mac") {
                         if (!(__messageBoxYesNo((__smessage
                                      "mac mode unemplemented for ", socid, "\n" +
@@ -624,7 +625,8 @@ sunxi_is_soc_valid(socid)
 {
 	if (socid == "V3s" || socid == "H3" || socid == "R40")
 		sunxi = "SUN8I";
-	else if (socid == "H5" || socid == "A63" || socid == "H616")
+	else if (socid == "H5" || socid == "A63" ||
+                 socid == "H616" || socid == "H6")
 		sunxi = "SUN50I";
 	else /* SUN6I SUNIV unemplemented */
 		return 0;
