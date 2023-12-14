@@ -6,8 +6,8 @@
 - [x] H5 (Orange Pi PC2)
 - [x] H616 (Orange Pi Zero2)
 - [x] H6 (Orange Pi One Plus)
+- [x] R40/A40/V40 (Banana Pi BPI-M2 Berry)
 - [ ] T113-S3 (MangoPi MQ-R)
-- [ ] R40/A40/V40 (Banana Pi BPI-M2 Berry)
 
 IAR allows out-of-the-box to run debugee in SUNXI SRAM by selecting the proper core and using a compatible linker configuration.  
 To run the app in DRAM we need to initialize it previously.  

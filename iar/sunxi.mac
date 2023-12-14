@@ -95,6 +95,7 @@ __param ccm__sata_pll_cfg = (SUNXI_CCM_BASE + 0x34);
 __param ccm__pll11_cfg = (SUNXI_CCM_BASE + 0x4c);
 __param ccm__cpu_axi_cfg = (SUNXI_CCM_BASE + 0x50);
 __param ccm__ahb1_apb1_div = (SUNXI_CCM_BASE + 0x54);
+__param ccm__apb2_div = (SUNXI_CCM_BASE + 0x58);
 __param ccm__ahb_gate0 = (SUNXI_CCM_BASE + 0x60);
 __param ccm__sata_clk_cfg = (SUNXI_CCM_BASE + 0xc8);
 __param ccm__dram_clk_cfg = (SUNXI_CCM_BASE + 0xf4);
@@ -103,12 +104,15 @@ __param ccm__mbus0_clk_cfg = (SUNXI_CCM_BASE + 0x15c);
 __param ccm__mbus1_clk_cfg = (SUNXI_CCM_BASE + 0x160);
 __param ccm__pll5_tuning_cfg = (SUNXI_CCM_BASE + 0x260);
 __param ccm__pll5_pattern_cfg = (SUNXI_CCM_BASE + 0x290);
+__param ccm__pll11_pattern_cfg0 = (SUNXI_CCM_BASE + 0x2AC);
+__param ccm__pll11_pattern_cfg1 = (SUNXI_CCM_BASE + 0x2B0);
 __param ccm__ahb_reset0_cfg = (SUNXI_CCM_BASE + 0x2c0);
 __param ccm__ccu_sec_switch = (SUNXI_CCM_BASE + 0x2f0);
 __param ccm__pll_lock_ctrl = (SUNXI_CCM_BASE + 0x320);
 __param PLL6_CFG_DEFAULT = 0x90041811;
 __param AHB1_ABP1_DIV_DEFAULT = 0x00003180;
 __param CCM_PLL5_PATTERN = 0xd1303333;
+__param CCM_PLL11_PATTERN = 0xf5860000;
 __param CCM_PLL1_CTRL_LOCK = (1 << 28);
 __param CCM_PLL6_CTRL_LOCK = (1 << 28);
 __param AXI_DIV_3 = 2;
@@ -137,6 +141,8 @@ __param CCM_PLL5_CTRL_EN = (0x1 << 31);
 __param CCM_PLL5_CTRL_SIGMA_DELTA_EN = (0x1 << 24);
 __param CCM_PLL5_CTRL_UPD = (0x1 << 20);
 __param CCM_PLL11_CTRL_EN = (0x1 << 31);
+__param CCM_PLL11_CTRL_UPD = (0x1 << 30);
+__param CCM_PLL11_CTRL_SIGMA_DELTA_EN = (0x1 << 24);
 __param CCM_DRAMCLK_CFG_DIV_MASK = (0xf << 0);
 __param CCM_DRAMCLK_CFG_DIV0_MASK = (0xf << 8);
 __param CCM_DRAMCLK_CFG_SRC_PLL5 = (0x0 << 20);
@@ -145,6 +151,11 @@ __param CCM_DRAMCLK_CFG_SRC_PLL11 = (0x1 << 20); /* A64 only */
 __param CCM_DRAMCLK_CFG_SRC_MASK = (0x3 << 20);
 __param CCM_DRAMCLK_CFG_UPD = (0x1 << 16);
 __param CCM_DRAMCLK_CFG_RST = (0x1 << 31);
+
+CCM_PLL11_CTRL_N(n)
+{
+	return ((n - 1) & 0x3f) << 8;
+}
 
 CCM_PLL5_TUN_LOCK_TIME(x)
 {
@@ -331,6 +342,7 @@ __param MCTL_CR_EIGHT_BANKS = (0x1 << 2);
 __param MCTL_CR_FOUR_BANKS = (0x0 << 2);
 __param MCTL_CR_DUAL_RANK = (0x1 << 0);
 __param MCTL_CR_SINGLE_RANK = (0x0 << 0);
+__param MCTL_CR_R1_MUX_A15 = (0x1 << 21);
 __param PROTECT_MAGIC = 0x94be6fa3;
 __param DX_GCR_ODT_DYNAMIC = (0x0 << 4);
 __param DX_GCR_ODT_ALWAYS_ON = (0x1 << 4);
@@ -524,10 +536,10 @@ execUserPreload()
                 /*have major differences so mac unimplemented */
                 if (init_mode == "mac") {
                         if (!(__messageBoxYesNo((__smessage
-                                     "mac mode unemplemented for ", socid, "\n" +
+                                     "mac mode unimplemented for ", socid, "\n" +
                                      "Continue using bin mode?"), "Error")))
                                 sunxi_panic(__smessage
-                                            "mac mode unemplemented for ", socid);
+                                            "mac mode unimplemented for ", socid);
                 }
                 init_mode = "bin";
         }
@@ -628,7 +640,7 @@ sunxi_is_soc_valid(socid)
 	else if (socid == "H5" || socid == "A63" ||
                  socid == "H616" || socid == "H6")
 		sunxi = "SUN50I";
-	else /* SUN6I SUNIV unemplemented */
+	else /* SUN6I SUNIV unimplemented */
 		return 0;
 	return 1;
 }
@@ -2344,7 +2356,7 @@ sunxi_dw_dram_init()
 
 suniv_dram_init()
 {
-	sunxi_panic("SUNIV DRAM init unemplemented\n" +
+	sunxi_panic("SUNIV DRAM init unimplemented\n" +
 		    "You can do it and make PR!\n" +
 		    "https://github.com/u-boot/u-boot/blob/" +
 		    "3c3f1626919cd93cbe6c56e3849937de5be18dbb/arch/arm/" +
@@ -2353,7 +2365,7 @@ suniv_dram_init()
 
 sun6i_dram_init()
 {
-	sunxi_panic("SUN6I DRAM init unemplemented\n" +
+	sunxi_panic("SUN6I DRAM init unimplemented\n" +
 		    "You can do it and make PR!\n" +
 		    "https://github.com/u-boot/u-boot/blob/" +
 		    "3c3f1626919cd93cbe6c56e3849937de5be18dbb/arch/arm/" +
@@ -2378,6 +2390,29 @@ sunxi_dram_init()
 }
 
 /* ************************************************************************** */
+clock_set_pll11(clk, sigma_delta_enable)
+{
+	if (DEBUG_CALLS())
+		__message "clock_set_pll11()";
+
+        __var val;
+
+	if (sigma_delta_enable)
+		write(ccm__pll11_pattern_cfg0, CCM_PLL11_PATTERN,
+		      "ccm->pll11_pattern_cfg0");
+
+	write(ccm__pll11_cfg, CCM_PLL11_CTRL_EN | CCM_PLL11_CTRL_UPD |
+	       (sigma_delta_enable ? CCM_PLL11_CTRL_SIGMA_DELTA_EN : 0) |
+	       CCM_PLL11_CTRL_N(clk / 24000000),
+		      "ccm->pll11_cfg");
+
+	if (DEBUG_ALL())
+		__message "waiting pll11 lock";
+	if (waitval(ccm__pll11_cfg, CCM_PLL11_CTRL_UPD, 0, 1000))
+		sunxi_panic("Timeout locking PLL11");
+	if (DEBUG_ALL())
+		__message "pll11 locked, readed back value is 0x", val :%x;
+}
 
 clock_set_pll5(clk, sigma_delta_enable)
 {
@@ -2544,10 +2579,7 @@ clock_init_safe()
 			"ccm->ahb_gate0");
 		setbits(ccm__sata_clk_cfg, CCM_SATA_CTRL_ENABLE,
 			"ccm->sata_clk_cfg");
-		__message "R40 SATA clock init end";
 	}
-	if (DEBUG_ALL())
-		__message "clock_init_safe() end";
 }
 
 clock_init_sec()

@@ -7,27 +7,28 @@
 #define CFG_SYS_INIT_DEBUG 0       /* 1 to enable uart console in dram-init */
 
 #if SOC_ID_V3S
-#include <configs\V3s.h>
+#include <configs/V3s.h>
 
 #elif SOC_ID_H3
-#include <configs\H3.h>
+#include <configs/H3.h>
 
 #elif SOC_ID_H5
-#include <configs\H5.h>
+#include <configs/H5.h>
 
 #elif SOC_ID_H6
-#include <configs\H6.h>
+#include <configs/H6.h>
 
 #elif SOC_ID_H616
-#include <configs\H616.h>
+#include <configs/H616.h>
 
 #elif SOC_ID_R40
+#include <configs/R40.h>
 
 #elif SOC_ID_A64
 
 #endif
 
-/* mods configs\xxx.h */
+/* mods configs/xxx.h */
 #undef CONFIG_CONS_INDEX
 #define CONFIG_CONS_INDEX (CFG_SYS_UART + 1)    /* redefine UART */
 #undef CONFIG_BAUDRATE
