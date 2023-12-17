@@ -24,7 +24,8 @@
 #elif SOC_ID_R40
 #include <configs/R40.h>
 
-#elif SOC_ID_A64
+#elif SOC_ID_T113_S3
+#include <configs/T113_S3.h>
 
 #endif
 

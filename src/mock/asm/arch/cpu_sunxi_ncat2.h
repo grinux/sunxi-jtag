@@ -1,0 +1,1 @@
+#include <asm/arch-sunxi/cpu_sunxi_ncat2.h>

@@ -1,31 +1,19 @@
 /*
-  * Allwinner SUNXI CPU and DRAM initialization according to
-  * https://github.com/u-boot/u-boot/blob/d5d24e2e0a3f54175e458d89acd626da939e1130/arch/arm/mach-sunxi/clock_sun6i.c#L21
-  * Based on sunxi wiki suppose support via mandatory <sunxi> param:
-  *     SUN8I:
-  *       A-series: A23, A33, A40i, A50 
-  *       H-series: H2+, H3, H8, H80, H133 
-  *       R-series: R7, R11, R16, R40, R58, R311, R328 
-  *       T-series: T2, T3, T7, T8, T113-S3, T113-I 
-  *       V-series: V3, V3s, V5, V40, V66, V316, V536, V831, V833 
-  *       X-series: B288, B300, MR100, MR133, S3
-  *     SUNIV(clock setup only):
-  *       F-series: F23(F1C100A), F25, F1C100s, F1C200s, F1C500, F1C500s, F1C600, F1C800, F1D100  
-  *     SUN50I:
-  *       A-series: A64
-          H-series: H5
-  *     SUN6I(clock setup only):
-  *       A-series: A31, A31s
+  * Allwinner CPU and DRAM initialization according to
+  * https://github.com/u-boot/u-boot/blob/d9650a48234058c645d1a07951c3d2cf129427e6/arch/arm/mach-sunxi/clock_sun6i.c
   *
-  * SoC H3, H5, R40 should be specifed explicitly in <socid> param. All others are not mandatory
-  * Soc R40 may also have AHCI option in <socopts> to setup SATA clock
-  *
-  * v0.1: V3s tested (Lichee Pi Zero). Based on 9841fe6
-  * v0.2: H3 tested (Orange Pi PC)
+  * v0.1: V3s(Lichee Pi Zero)
+  * v0.2: H3 (Orange Pi PC)
+  * v1.0: H5 (Orange Pi PC2)
+  *       H6 (Orange Pi One Plus)
+  *       H616 (Oragne Pi Zero2)
+  *       A40i/R40/V40 (Banana Pi BPI-M2 Berry)
+  *       T113-S3 (MangoPi MQ1DW)
   */
 
 __param socid = "";
 __param init_mode = "";
+__param init_force = 0; /* prevent init if DRAM accesible */
 
 __param CONFIG_SUNXI_AHCI = 0;
 __param CONFIG_SYS_CLK_FREQ = 0;
@@ -37,15 +25,14 @@ __param CONFIG_SUNXI_DRAM_DDR3_1333 = 0;
 __param CONFIG_SUNXI_DRAM_DDR2 = 0;
 __param CONFIG_SUNXI_DRAM_LPDDR3 = 0;
 __param CONFIG_DRAM_ZQ = 0;
-__param CONFIG_SYS_SRAM_BASE = -1;
-__param CFG_SYS_SDRAM_BASE = -1;
 
 __param DEBUG_NONE_FLAG = (0);
 __param DEBUG_CALLS_FLAG = (1 << 0);
 __param DEBUG_IO_FLAG = (1 << 1);
 __param DEBUG_ALL_FLAG = (1 << 2);
-/* valid only if init_mode = "mac" */
+/* __param debug valid only if init_mode = "mac" */
 __param debug = DEBUG_NONE_FLAG;
+__var sram_base;
 
 DEBUG_CALLS()
 {
@@ -466,6 +453,18 @@ __param SUN8I_H5_DX_WRITE_DELAYS =
 __param SUN8I_H5_AC_DELAYS = "0,0,5,5,0,0,0,0," + "0,0,0,0,3,3,3,3," +
 			     "3,3,3,3,3,3,3,3," + "3,3,3,3,2,0,0";
 
+sunxi_set_sram_base()
+{
+        if (socid == "V3s" || socid == "H3" || socid == "R40")
+                sram_base = 0x0;
+        else if (socid == "H5")
+                sram_base = 0x10000;
+        else if (socid == "H616" || socid == "H6" || socid == "T113-S3")
+                sram_base = 0x20000;
+        else
+                sunxi_panic("SRAM base unknown for socid = " + socid);
+}
+
 sunxi_check_mac_param()
 {
 	__var ulist, wlist;
@@ -481,10 +480,6 @@ sunxi_check_mac_param()
 		ulist += "CONFIG_DRAM_ODT_EN\n";
 	if (CONFIG_DRAM_ZQ == 0)
 		ulist += "CONFIG_DRAM_ZQ\n";
-	if (CONFIG_SYS_SRAM_BASE == -1)
-		ulist += "CONFIG_SYS_SRAM_BASE\n";
-	if (CFG_SYS_SDRAM_BASE == -1)
-		ulist += "CFG_SYS_SDRAM_BASE\n";
 	if (CONFIG_SUNXI_DRAM_DW_32BIT == 0 && CONFIG_SUNXI_DRAM_DW_16BIT == 0)
 		ulist += "\nEnable one of:\nCONFIG_SUNXI_DRAM_DW_32BIT\n" +
 			 "CONFIG_SUNXI_DRAM_DW_16BIT\n";
@@ -501,8 +496,8 @@ sunxi_check_mac_param()
 		wlist += "CONFIG_SUNXI_DRAM_DW_32BIT = 1\n" +
 			 "CONFIG_SUNXI_DRAM_DW_16BIT = 1\n";
 	}
-	if (socid == "V3s" && CONFIG_DRAM_ODT_EN == 1)
-		wlist += "socid = V3s\nCONFIG_DRAM_ODT_EN = 1\n";
+        if (socid == "V3s" && CONFIG_DRAM_ODT_EN == 1)
+                wlist += "socid = V3s\nCONFIG_DRAM_ODT_EN = 1\n";
 	__var flg;
 	flg = 0;
 	if (CONFIG_SUNXI_DRAM_DDR3_1333 &&
@@ -523,17 +518,104 @@ sunxi_check_mac_param()
 			CONFIG_SUNXI_DRAM_LPDDR3, "\n";
 	if (wlist != "")
 		wlist = "\nWrong params combination: \n" + wlist + "\n";
-	if (!sunxi_is_soc_valid(socid))
-		wlist = wlist + "\nUnsupported socid = " + socid + "\n";
 	if (wlist != "" || ulist != "")
 		sunxi_panic(ulist + wlist);
+}
+
+sunxi_execute_bin()
+{
+        __var full_path, rc, i;
+
+        full_path = "$PROJ_DIR$\\" + __toLower(sunxi) + "-" +
+                    __toLower(socid) + "-dram-init.hex";
+        __message "Trying to open " + full_path;
+        rc = __openFile(full_path, "r");
+        if (!rc) {
+                full_path = "$WS_DIR$\\" + __toLower(sunxi) + "-" +
+                            __toLower(socid) + "-dram-init.hex";
+                __message "Trying to open " + full_path;
+                rc = __openFile(full_path, "r");
+                if (!rc)
+                        sunxi_panic("Binary " + __toLower(sunxi) + "-" +
+                                    __toLower(socid) +
+                                    "-dram-init.hex not found");
+        }
+        __closeFile(rc);
+
+        if (__memoryRestore("Memory", full_path, 0))
+                sunxi_panic("Binary " + __toLower(sunxi) + "-" +
+                            __toLower(socid) +
+                            "-dram-init.hex loading error");
+        /* if we zero-fill regs the macro engine marks them as cached and after
+         * executing blob it does not do rereading regs as J-Link log says.
+         * PC reading still 0 too!
+         *
+         * R9 = R10 = R11 = R12 = 0; so this is disabled
+         * return code stored by blob in R9 and should be 0xBABE if success
+         *
+         */
+        for (i = 0; i < 8; i++) {
+                __delay(100);
+                __message "Executing binary (", i + 1, "):",
+                          "\n       Entry point: 0x", sram_base:%x;
+                /* invalidate magic value */
+                __writeMemory32(0xBADDAD, sram_base + 0x50, "Memory");
+                __readMemory32(sram_base + 0x50, "Memory");
+
+                CPSR = 0x1d3;
+                PC = sram_base;
+                rc = (int)__hwRunToBreakpoint(sram_base + 0x40, 4000);
+                CPSR = 0x1d3;
+                __delay(10);
+                if (__readMemory32(sram_base + 0x50, "Memory") == 0xBABE) {
+                        /* expected return code from blob init */
+                        if (rc < 0)
+                                __message "Done but rc = ", rc;
+                        CONFIG_SYS_CLK_FREQ = __readMemory32(sram_base + 0x44, "Memory");
+                        CONFIG_DRAM_CLK  = __readMemory32(sram_base + 0x48, "Memory");
+                        dram_size = __readMemory32(sram_base + 0x4C, "Memory");
+                        return;
+                }
+                if (rc == -1)
+                         __message "Failed to set breakpoint, retrying";
+                else if (rc == -2)
+                        __message "Timeout. Return code 0x",
+                                __readMemory32(sram_base + 0x50, "Memory"),
+                                " retrying";
+                else if (rc < 0)
+                        __message "Unknown error ", rc, ", retrying";
+                else if (rc >= 0) {
+                        __message "Return code 0x",
+                                __readMemory32(sram_base + 0x50, "Memory"),
+                                " retrying";
+                }
+        }
+        sunxi_panic("Binary executing error");
 }
 
 execUserPreload()
 {
 	__message "Going to configuire Allwinner ", socid;
-        if (socid == "H616" || socid == "H6") {
-                /*have major differences so mac unimplemented */
+
+        if (!sunxi_is_soc_valid(socid))
+                sunxi_panic("Unsupported socid = " + socid);
+
+        sunxi_set_sram_base();
+
+        if (PC >= 0x40000000) {
+                __message "DRAM already initialized";
+                if (init_force)
+                        __message "Force init";
+                else {
+                        __message("       Exiting...");
+                        return;
+                }
+        }
+
+        __message "Current PC: 0x", PC:%x,
+                  "\nCurrent CPSR: 0x", CPSR:%x;
+        if (socid == "H616" || socid == "H6" || socid == "T113-S3") {
+                /*have major differences so mac unimplemented yet*/
                 if (init_mode == "mac") {
                         if (!(__messageBoxYesNo((__smessage
                                      "mac mode unimplemented for ", socid, "\n" +
@@ -558,84 +640,38 @@ execUserPreload()
 			init_mode = "bin";
 	}
 	if (init_mode == "bin") {
-		if (!sunxi_is_soc_valid(socid))
-			sunxi_panic("Unsupported socid = " + socid);
-		__var full_path, rc;
-		__message "Using binary";
-		full_path = "$WS_DIR$\\" + __toLower(sunxi) + "-" +
-			    __toLower(socid) + "-dram-init.hex";
-		__message "Trying to open " + full_path;
-		rc = __openFile(full_path, "r");
-		if (!rc) {
-			full_path = "$PROJ_DIR$\\" + __toLower(sunxi) + "-" +
-				    __toLower(socid) + "-dram-init.hex";
-			__message "Trying to open " + full_path;
-			rc = __openFile(full_path, "r");
-			if (!rc)
-				sunxi_panic("Binary " + __toLower(sunxi) + "-" +
-					    __toLower(socid) +
-					    "-dram-init.hex not found");
-		}
-		__closeFile(rc);
-		/* hex file contains correct offset*/
-		if (__memoryRestore("Memory", full_path, 0))
-			sunxi_panic("Binary " + __toLower(sunxi) + "-" +
-				    __toLower(socid) +
-				    "-dram-init.hex loading error");
-		__message "Executing binary...";
-		/* if we zero-fill regs the macro engine marks them as cached and after
-         * executing blob it does not do rereading regs as J-Link log says.
-         * PC reading still 0 too! 
-         *  
-         * R10 = R11 = R12 = 0; so this is disabled
-         * 
-         */
-		CPSR = 0x1d3;
-		PC = CONFIG_SYS_SRAM_BASE;
-		rc = (int)__hwRunToBreakpoint(CONFIG_SYS_SRAM_BASE + 0x40,
-					      10000);
-		if (rc == -1)
-			sunxi_panic(__smessage "Binary executing error:\n\n" +
-				    "Failed to set breakpoint");
-		else if (rc == -2)
-			sunxi_panic(__smessage "Binary executing error:\n\n" +
-				    "Failed to stop at the breakpoint " +
-				    "before timeout.");
-		else if (rc < 0)
-			sunxi_panic(__smessage "Binary executing error:\n\n" +
-					    "Unknown error ",
-				    rc);
-		CPSR = 0x1d3;
-		CONFIG_SYS_CLK_FREQ = R12;
-		CONFIG_DRAM_CLK = R11;
-		dram_size = R10;
-	} else if (init_mode == "mac") {
+                __message "Binary mode";
+                sunxi_execute_bin();
+                __message "Init done\n",
+                        "       CPU clock: ", CONFIG_SYS_CLK_FREQ, " MHz\n",
+                        "       DRAM clock: ", CONFIG_DRAM_CLK, " MHz\n",
+                        "       DRAM size: ", dram_size, " MiB";
+        } else if (init_mode == "mac") {
 		sunxi_check_mac_param();
-		__message "Using macro";
+		__message "Macro mode";
 		__message "       CPU clock: ", CONFIG_SYS_CLK_FREQ / 1000000,
-			".", CONFIG_SYS_CLK_FREQ % 1000000, " MHz";
+			".", CONFIG_SYS_CLK_FREQ % 1000000, " MHz\n",
 		/*__message "       Core voltage: ", cpu_voltage / 1000, ".",
 			cpu_voltage % 1000, " V";*/
-		__message "       DRAM clock: ", CONFIG_DRAM_CLK, " MHz";
-		clock_init_safe();
+                        "       DRAM clock: ", CONFIG_DRAM_CLK, " MHz\n";
+		CPSR = 0x1d3;
+                clock_init_safe();
 		/* clock_init_uart(); */
 		clock_init_sec();
 		sunxi_dram_init();
 		clock_set_pll1(CONFIG_SYS_CLK_FREQ);
-		CONFIG_SYS_CLK_FREQ /= 1000000;
-		dram_size >>= 20;
+                __writeMemory32(0xBABE, sram_base + 0x50, "Memory");
+                __message "Init done\n",
+                          "       DRAM size: ", dram_size >> 20, " MiB";
 	} else
 		sunxi_panic("Unsupported init_mode = " + init_mode + "\n\n" +
 			    "--macro_param init_mode=<(\"mac\"|\"bin\")>");
-
-	__message "Init done\n", "       CPU clock: ", CONFIG_SYS_CLK_FREQ,
-		" MHz\n", "       DRAM clock: ", CONFIG_DRAM_CLK, " MHz\n",
-		"       DRAM size: ", dram_size, " MiB";
 }
 
 sunxi_is_soc_valid(socid)
 {
-	if (socid == "V3s" || socid == "H3" || socid == "R40")
+	if (socid == "V3s" || socid == "H3" ||
+            socid == "R40" || socid == "T113-S3")
 		sunxi = "SUN8I";
 	else if (socid == "H5" || socid == "A63" ||
                  socid == "H616" || socid == "H6")
@@ -648,23 +684,21 @@ sunxi_is_soc_valid(socid)
 sunxi_panic(str)
 {
 	__messageBoxYesCancel("In sunxi.mac:\n\n" + str, "Error");
-	__abortLaunch("Error: " + str + "\n       Exiting....");
+	__abortLaunch("Error: " + str + "\n       Exiting...");
 }
 
 read(addr, name)
 {
 	__var val;
-	val = __readMemory32(addr, "Memory");
+        val = __readMemory32(addr, "Memory");
 	if (DEBUG_IO())
-		/*__message "         R  ", name, ": 0x", val:%x;*/
 		__message "R32: ", addr :%x, "=", val :%x;
-	return val;
+        return val;
 }
 
 write(addr, val, name)
 {
 	if (DEBUG_IO())
-		/*__message "         W ", name, ": 0x", val:%x;*/
 		__message "W32: ", addr :%x, "=", val :%x;
 	__writeMemory32(val, addr, "Memory");
 	return __readMemory32(addr, "Memory");
@@ -2099,7 +2133,7 @@ mctl_r40_detect_rank_count_dw()
 		__message "mctl_r40_detect_rank_count_dw()";
 
 	__var rank1_base;
-	rank1_base = CFG_SYS_SDRAM_BASE + mctl_calc_rank_size_dw(0);
+	rank1_base = 0x40000000 + mctl_calc_rank_size_dw(0);
 
 	/* Enable read time out */
 	setbits(mctl_ctl__pgcr0, 0x1 << 25, "mctl_ctl->pgcr[0]");
@@ -2148,28 +2182,28 @@ dsb()
 	__var val;
 
 	/* DSB */
-	__writeMemory32(0xf57ff04f, CONFIG_SYS_SRAM_BASE, "Memory");
+	__writeMemory32(0xf57ff04f, sram_base, "Memory");
 
 	/* MOV r0, #0xAB */
-	__writeMemory32(0xe3a000ab, CONFIG_SYS_SRAM_BASE + 4, "Memory");
+	__writeMemory32(0xe3a000ab, sram_base + 4, "Memory");
 
-	if (__readMemory32(CONFIG_SYS_SRAM_BASE, "Memory") != 0xf57ff04f ||
-	    __readMemory32(CONFIG_SYS_SRAM_BASE + 4, "Memory") != 0xe3a000ab)
+	if (__readMemory32(sram_base, "Memory") != 0xf57ff04f ||
+	    __readMemory32(sram_base + 4, "Memory") != 0xe3a000ab)
 		sunxi_panic(__smessage "DSB fail! Pre DSB check error\n" +
-				    "   CONFIG_SYS_SRAM_BASE = 0x",
-			    CONFIG_SYS_SRAM_BASE:%x, 
-			    "\n   0x", CONFIG_SYS_SRAM_BASE:%x, " = 0x",
-			      __readMemory32(CONFIG_SYS_SRAM_BASE, "Memory"):%x, 
-			    "\n   0x", (CONFIG_SYS_SRAM_BASE + 4):%x, 
+				    "   SRAM base 0x",
+			    sram_base:%x,
+			    "\n   0x", sram_base:%x, " = 0x",
+			      __readMemory32(sram_base, "Memory"):%x,
+			    "\n   0x", (sram_base + 4):%x,
 			    " = 0x",
-			      __readMemory32(CONFIG_SYS_SRAM_BASE + 4, "Memory")
+			      __readMemory32(sram_base + 4, "Memory")
 			    :%x);
-	PC = CONFIG_SYS_SRAM_BASE;
-	__hwRunToBreakpoint(CONFIG_SYS_SRAM_BASE + 8, 1000);
+	PC = sram_base;
+	__hwRunToBreakpoint(sram_base + 8, 1000);
 	if (R0 != 0xAB)
 		sunxi_panic(__smessage "DSB fail! Post DSB check error\n" +
-				    "   CONFIG_SYS_SRAM_BASE = 0x",
-			    CONFIG_SYS_SRAM_BASE:%x,
+				    "   SRAM base 0x",
+			    sram_base:%x,
 			      "\n" + "   expected: R0 = 0xab\n" +
 				      "   readed: R0 = 0x",
 			      R0:%x);
@@ -2286,10 +2320,10 @@ mctl_auto_detect_dram_size_dw()
 {
 	if (DEBUG_CALLS())
 		__message "mctl_auto_detect_dram_size_dw()";
-	mctl_auto_detect_dram_size_rank0_dw(CFG_SYS_SDRAM_BASE);
+	mctl_auto_detect_dram_size_rank0_dw(0x40000000);
 
 	if ((socid == "A64" || socid == "R40") && dual_rank) {
-		mctl_auto_detect_dram_size_rank1_dw(CFG_SYS_SDRAM_BASE +
+		mctl_auto_detect_dram_size_rank1_dw(0x40000000 +
 						    mctl_calc_rank_size_dw(0));
 	}
 }
@@ -2497,6 +2531,7 @@ clock_set_pll1(clock)
 	/* Switch CPU to PLL1 */
 	if (DEBUG_ALL())
 		__message "connect CPU to pll1";
+        __delay(10);
 	if (sunxi == "SUNIV")
 		write(ccm__cpu_axi_cfg, CPU_CLK_SRC_PLL1 << CPU_CLK_SRC_SHIFT,
 		      "ccm->cpu_axi_cfg");
@@ -2570,7 +2605,8 @@ clock_init_safe()
 	}
 
 	if (socid == "R40" && CONFIG_SUNXI_AHCI) {
-		__message "R40 SATA clock init";
+                if (DEBUG_ALL())
+                        __message "R40 SATA clock init";
 		setbits(ccm__sata_pll_cfg, CCM_SATA_PLL_DEFAULT,
 			"ccm->sata_pll_cfg");
 		setbits(ccm__ahb_reset0_cfg, 0x1 << AHB_GATE_OFFSET_SATA,

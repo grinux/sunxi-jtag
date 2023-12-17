@@ -19,8 +19,8 @@
 
 #define CFG_SYS_BAUDRATE_TABLE {CFG_SYS_BAUDRATE}
 
-#define _COUNT_TO_USEC(x)	((x) / 24)
-#define timer_get_us() _COUNT_TO_USEC(get_ticks())
+//#define _COUNT_TO_USEC(x)	((x) / 24)
+#define timer_get_us() (get_ticks() * 1000)
 
 #define BIT(nr)			(1UL << (nr))
 #define ALIGN(x,a)		__ALIGN_MASK((x),(typeof(x))(a)-1)
@@ -142,12 +142,25 @@
 
 #define writeb(v,c)	({ printf ("W08: %x=%x\n", c, v); u8  __v = v; __iowmb(); __arch_putb(__v,c); __v; })
 #define writew(v,c)	({ printf ("W16: %x=%x\n", c, v);u16 __v = v; __iowmb(); __arch_putw(__v,c); __v; })
+
+#ifdef SOC_ID_T113_S3 /* don't print memory test R/W */
+#define writel(v,c)	({ if (!((u32)c & (1 << 30))) printf ("W32: %x=%x\n", c, v);u32 __v = v; __iowmb(); __arch_putl(__v,c); __v; })
+#else
+
 #define writel(v,c)	({ printf ("W32: %x=%x\n", c, v);u32 __v = v; __iowmb(); __arch_putl(__v,c); __v; })
+#endif
 
 #define readb(c)	({ u8  __v = __arch_getb(c); __iormb(); printf ("R08: %x=%x\n", c, __v); __v; })
 #define readw(c)	({ u16 __v = __arch_getw(c); __iormb(); printf ("R16: %x=%x\n", c, __v); __v; })
-#define readl(c)	({ u32 __v = __arch_getl(c); __iormb(); printf ("R32: %x=%x\n", c, __v); __v; })
-#define readlw(c)	({ u32 __v = __arch_getl(c); __iormb();/* printf ("WAI: %x=%x\n", c, __v);*/ __v; })
+
+#ifdef SOC_ID_T113_S3 /* don't print memory test R/W */
+#define readl(c)	({ u32 __v = __arch_getl(c); __iormb(); if (!((u32)c & (1 << 30))) printf ("R32: %x=%x\n", c, __v); __v; })
+
+#else
+#define readl(c)	({ u32 __v = __arch_getl(c); __iormb(); __v; })
+#endif
+
+#define readlw(c)	({ u32 __v = __arch_getl(c); __iormb(); __v; })
 
 #define readl_relaxed(c)	({ u32 __v = __arch_getl(c); printf ("R32: %x=%x\n", c, __v); __v; })
 #define writel_relaxed(v,c)	({ printf ("W32: %x=%x\n", c, v); u32 __v = v; __arch_putl(__v,c); __v; })
@@ -167,6 +180,15 @@
 #define readb(c)	({ u8  __v = __arch_getb(c); __iormb(); __v; })
 #define readw(c)	({ u16 __v = __arch_getw(c); __iormb(); __v; })
 #define readl(c)	({ u32 __v = __arch_getl(c); __iormb(); __v; })
+
+#ifdef SOC_ID_R40
+/* sdelay(200) in clock_sun6i.c not enough if we do warm binary reinit 
+ * R40 core crashes. Added necessary additional delay until u-boot not fixed 
+ */
+#undef writel
+#define writel(v,c)	({ sdelay(1000); \
+                           u32 __v = v; __iowmb(); __arch_putl(__v,c); __v; })
+#endif
 
 #define readl_relaxed(c)	({ u32 __v = __arch_getl(c); __v; })
 #define writel_relaxed(v,c)	({ u32 __v = v; __arch_putl(__v,c); __v; })
