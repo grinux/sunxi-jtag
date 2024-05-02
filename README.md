@@ -17,14 +17,14 @@ It was done by porting the U-Boot clock and DRAM initialization code into an IAR
 Initialization by executing precompiled binary is also supported.  
 
 Steps:  
-1. Setup IAR, J-Link, board, USB dongle(optional)
+1. Setup IAR 9.40 for only Cortex-A7, 9.50 and later for both A7 and A53, J-Link, board, USB dongle(optional)
 2. Clone repo git clone --recurse-submodules https://github.com/grinux/sunxi-jtag.git  
 3. Open sunxi-jtag.ewp or sunxi-jtag-94.ewp for EWARM 9.40
 4. In sunxi_jtag.h change CFG_SYS_UART to desired console UART.
 5. Build XX-dram-app target.
 6. For Cortex-A53 core (H5 etc) run J-Link GDB server GUI and select Cortex-A53 core, JTAG interface, and GDB port 2331
 or run console version with params: -select USB=0 -device Cortex-A53 -endian little -if JTAG -speed auto -noir -LocalhostOnly -nologtofile -port 2331
-7. Start debugging. If IAR asks for memory configuration. Hit "Use factory button".
+7. Start debugging. If IAR asks for memory configuration. Hit "Use factory" button.
 8. If message box popups select desired initialization mode and set it permanently in project options later following message box instructions.
 9. Run.
 10. If the USB dongle is connected "Hello from DRAM" output appears.

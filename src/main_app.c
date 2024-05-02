@@ -7,7 +7,7 @@ void main(void)
         /* store uart bauddrate */
         gd = &_gd;
 
-        /* set desired cpu clock in hz */
+        /* reinit cpu clock in hz */
         /* clock_set_pll1(408000000); */
         
         /* enable uart clock */    

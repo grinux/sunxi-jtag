@@ -2,7 +2,7 @@
 #define _SUNXI_JTAG_H_
 
 #define CFG_SYS_BAUDRATE 115200    /* br */
-#define CFG_SYS_CPU_CLK_CUSTOM 0   /* place desired CPU clk here */
+#define CFG_SYS_CPU_CLK_CUSTOM 0   /* place desired CPU clk here. 0 - default clk */
 #define CFG_SYS_UART 0             /* uart to use */
 #define CFG_SYS_INIT_DEBUG 0       /* 1 to enable uart console in dram-init */
 

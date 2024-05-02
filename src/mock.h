@@ -19,7 +19,6 @@
 
 #define CFG_SYS_BAUDRATE_TABLE {CFG_SYS_BAUDRATE}
 
-//#define _COUNT_TO_USEC(x)	((x) / 24)
 #define timer_get_us() (get_ticks() * 1000)
 
 #define BIT(nr)			(1UL << (nr))
@@ -35,7 +34,7 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
-/* disable unsupported and redefine other attrubutes */
+/* disable unsupported and redefine other attributes */
 #define __asm__ asm
 #define __always_inline inline
 #define __packed 
@@ -275,7 +274,7 @@
 #define GD_FLG_SERIAL_READY             (0x100)
 #define GD_FLG_RECORD_OVF               (0x2000)
 
-/* mock for unused strcuts */
+/* mock for unused structs */
 struct spl_image_info;
 struct spl_boot_device;
 struct phy { u8 dummy; };
